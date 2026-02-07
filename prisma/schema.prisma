@@ -1,0 +1,353 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  nome            String
+  senha           String
+  avatar          String?
+
+  dataNascimento  DateTime?
+  sexo            Sexo?
+
+  notificacoesAtivas Boolean @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  pets            Pet[]
+  notificacoes Notificacao[]
+  salvos Salvo[]
+
+  @@map("users")
+}
+
+
+model Notificacao {
+  id          String   @id @default(uuid())
+
+  titulo      String
+  mensagem    String
+
+  tipo        TipoNotificacao
+  pathKey     String?
+
+  lida        Boolean  @default(false)
+
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  lidaEm      DateTime?
+
+  @@index([userId, lida])
+  @@map("notificacoes")
+}
+
+
+model Salvo {
+  id          String   @id @default(uuid())
+
+  titulo      String
+  descricao   String?
+
+  tipo        TipoSalvo
+  referenciaId String
+  pathKey     String
+
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([tipo, referenciaId])
+  @@map("salvos")
+}
+
+
+model Pet {
+  id        String   @id @default(uuid())
+  nome      String
+  foto      String?
+  raca      String?
+  
+  dataNascimento DateTime?
+  idade           Int?
+  meses           Int?
+
+  peso     Float?
+  especie  Especie
+  cor      String?
+  sexo     SexoPet
+  porte    Porte
+
+  microchip  String?
+  castrado   Boolean @default(false)
+
+  veterinarioResponsavel String?
+
+  alergiasRestricoes String[]
+  doencasCronicas    String[]
+
+  comportamento Comportamento
+
+  convivencia Convivencia[]
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  respostasDicas PetDicaResposta[]
+  analises AnaliseHistorico[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pets")
+}
+
+
+model Dica {
+  id          String @id @default(uuid())
+  titulo      String
+  descricao   String
+  icone       String?
+
+  createdAt  DateTime @default(now())
+
+  etapas     DicaEtapa[]
+  respostas  PetDicaResposta[]
+
+  @@map("dicas")
+}
+
+
+model DicaEtapa {
+  id       String @id @default(uuid())
+  titulo   String
+  ordem    Int
+
+  dicaId  String
+  dica    Dica @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+
+  opcoes  DicaOpcao[]
+  respostas PetDicaResposta[]
+
+  @@map("dica_etapas")
+}
+
+
+model DicaOpcao {
+  id        String @id @default(uuid())
+  texto     String
+  valor     String
+  ordem     Int
+
+  etapaId  String
+  etapa    DicaEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  respostas PetDicaResposta[]
+
+  @@map("dica_opcoes")
+}
+
+
+model PetDicaResposta {
+  id        String @id @default(uuid())
+
+  petId    String
+  pet      Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  dicaId   String
+  dica     Dica @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+
+  etapaId  String
+  etapa    DicaEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  opcaoId  String
+  opcao    DicaOpcao @relation(fields: [opcaoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([petId, dicaId, etapaId])
+  @@map("pet_dica_respostas")
+}
+
+
+model Analise {
+  id          String @id @default(uuid())
+  titulo      String
+  descricao   String
+  icone       String?
+
+  createdAt DateTime @default(now())
+
+  etapas     AnaliseEtapa[]
+
+  historicos AnaliseHistorico[]
+
+  @@map("analises")
+}
+
+
+model AnaliseEtapa {
+  id       String @id @default(uuid())
+  titulo   String
+  ordem    Int
+
+  permiteTexto Boolean @default(false)
+  permiteFoto  Boolean @default(false)
+
+  analiseId String
+  analise   Analise @relation(fields: [analiseId], references: [id], onDelete: Cascade)
+
+  opcoes    AnaliseOpcao[]
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_etapas")
+}
+
+
+model AnaliseOpcao {
+  id       String @id @default(uuid())
+  texto    String
+  valor    String
+  ordem    Int
+
+  etapaId String
+  etapa   AnaliseEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_opcoes")
+}
+
+
+model AnaliseHistorico {
+  id        String @id @default(uuid())
+
+  petId    String
+  pet      Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  analiseId String
+  analise   Analise @relation(fields: [analiseId], references: [id])
+
+  concluida Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_historicos")
+}
+
+
+model AnaliseResposta {
+  id String @id @default(uuid())
+
+  historicoId String
+  historico   AnaliseHistorico @relation(fields: [historicoId], references: [id], onDelete: Cascade)
+
+  etapaId String
+  etapa   AnaliseEtapa @relation(fields: [etapaId], references: [id])
+
+  opcaoId String?
+  opcao   AnaliseOpcao? @relation(fields: [opcaoId], references: [id])
+
+  texto   String?
+  fotoUrl String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([historicoId, etapaId])
+  @@map("analise_respostas")
+}
+
+
+enum TipoNotificacao {
+  DICA
+  ANALISE
+  LEMBRETE
+  SAUDE
+  SISTEMA
+}
+
+
+model BannerHome {
+  id          String   @id @default(uuid())
+
+  titulo      String?
+  descricao   String?
+
+  imagemUrl   String
+  pathKey     String?
+
+  ativo       Boolean  @default(true)
+  ordem       Int      @default(0)
+
+  dataInicio  DateTime?
+  dataFim     DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ativo])
+  @@map("banners_home")
+}
+
+
+enum Especie {
+  GATO
+  CACHORRO
+}
+
+enum SexoPet {
+  MACHO
+  FEMEA
+}
+
+enum Sexo {
+  MACHO
+  FEMEA
+}
+
+enum Porte {
+  PEQUENO
+  MEDIO
+  GRANDE
+}
+
+enum Comportamento {
+  CALMO
+  AGITADO
+  SOCIAVEL
+  TIMIDO
+  AGRESSIVO
+  BRINCALHAO
+}
+
+enum Convivencia {
+  CRIANCAS
+  OUTROS_CAES
+  GATOS
+  ESTRANHOS
+  IDOSOS
+}
+
+enum TipoSalvo {
+  ANALISE
+  DICA
+}
