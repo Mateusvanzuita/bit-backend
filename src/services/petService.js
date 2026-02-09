@@ -3,13 +3,31 @@ const petRepository = require('../repositories/petRepository');
 const { AppError } = require('../middlewares/errorHandler');
 
 class PetService {
-  async createPet(userId, petData) {
-    return await petRepository.create({
-      ...petData,
-      userId,
-      dataNascimento: petData.dataNascimento ? new Date(petData.dataNascimento) : null
-    });
-  }
+async createPet(userId, petData) {
+  // 1. Mapeamos os campos exatamente como seu App envia no register.tsx
+  const formattedData = {
+    nome: petData.nome,        // O App envia 'nome' e não 'name'
+    raca: petData.raca,        // O App envia 'raca' e não 'breed'
+    sexo: petData.sexo,        // O App já envia 'MACHO' ou 'FEMEA'
+    
+    // O App envia 'dog' ou 'cat', o Prisma exige 'CACHORRO' ou 'GATO'
+    especie: petData.especie === 'DOG' ? 'CACHORRO' : 'GATO', 
+    
+    porte: petData.porte?.toUpperCase() || 'MEDIO',
+    peso: parseFloat(petData.peso) || 0,
+    idade: parseInt(petData.idade) || 0,
+    meses: parseInt(petData.meses) || 0,
+    cor: petData.cor,
+    castrado: petData.castrado || false,
+    comportamento: petData.comportamento || 'CALMO',
+    convivencia: petData.convivencia || [],
+    userId: userId,
+    dataNascimento: petData.dataNascimento ? new Date(petData.dataNascimento) : null
+  };
+
+  // 2. Agora o Prisma receberá todos os campos preenchidos corretamente
+  return await petRepository.create(formattedData);
+}
 
   async getAllPets(userId) {
     return await petRepository.findByUserId(userId);
