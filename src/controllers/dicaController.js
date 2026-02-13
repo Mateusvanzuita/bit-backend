@@ -14,8 +14,18 @@ class DicaController {
 
   submitRespostas = asyncHandler(async (req, res) => {
     const { petId, respostas } = req.body;
-    const result = await dicaService.salvarResposta(req.user.id, petId, req.params.id, respostas);
-    res.status(201).json({ status: 'success', data: { result } });
+    const result = await dicaService.gerarDicaPersonalizada(
+      req.user.id, 
+      petId, 
+      req.params.id, 
+      respostas
+    );
+    res.status(201).json({ status: 'success', data: result });
+  });
+
+  getHistorico = asyncHandler(async (req, res) => {
+    const result = await dicaService.getHistorico(req.params.historicoId);
+    res.status(200).json({ status: 'success', data: result });
   });
 }
 

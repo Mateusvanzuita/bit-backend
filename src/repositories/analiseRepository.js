@@ -1,3 +1,4 @@
+// src/repositories/analiseRepository.js
 const prisma = require('../config/database');
 const BaseRepository = require('./baseRepository');
 
@@ -6,7 +7,18 @@ class AnaliseRepository extends BaseRepository {
     super('analise');
   }
 
-  // Busca a estrutura completa da análise para o App montar o formulário
+  async createHistorico(petId, analiseId) {
+    return await prisma.analiseHistorico.create({
+      data: {
+        petId,
+        analiseId,
+        concluida: true,
+        petId: data.petId,
+        dicaId: data.dicaId
+      }
+    });
+  }
+
   async findFullAnalise(id) {
     return await prisma.analise.findUnique({
       where: { id },
@@ -19,21 +31,34 @@ class AnaliseRepository extends BaseRepository {
     });
   }
 
-  // Cria o cabeçalho do histórico antes de salvar as respostas individuais
-  async createHistorico(petId, analiseId) {
-    return await prisma.analiseHistorico.create({
-      data: {
-        petId,
-        analiseId,
-        concluida: true // Definimos como concluída ao finalizar o envio
+  async findById(id) {
+    return await prisma.analise.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        titulo: true,
+        prompt: true
       }
     });
   }
 
-  // Salva cada resposta individual vinculada ao histórico
+  async updateResultadoIA(historicoId, textoIA) {
+    return await prisma.analiseHistorico.update({
+      where: { id: historicoId },
+      data: { resultadoIA: textoIA }
+    });
+  }
+
   async createResposta(data) {
     return await prisma.analiseResposta.create({ data });
   }
+
+  async findHistoricoById(id) {
+  return await prisma.analiseHistorico.findUnique({
+    where: { id },
+    include: { analise: true } // Inclui dados da análise se precisar do título no frontend
+  });
+}
 }
 
 module.exports = new AnaliseRepository();

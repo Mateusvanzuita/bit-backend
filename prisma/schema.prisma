@@ -107,8 +107,9 @@ model Pet {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  respostasDicas PetDicaResposta[]
+// Relacionamentos para Dicas
+  historicosDicas       PetDicaHistorico[] // Oposto de PetDicaHistorico.pet
+  respostasDicas        PetDicaResposta[]
   analises AnaliseHistorico[]
 
   createdAt DateTime @default(now())
@@ -123,9 +124,10 @@ model Dica {
   titulo      String
   descricao   String
   icone       String?
+  prompt    String?  @db.Text
 
   createdAt  DateTime @default(now())
-
+historicos  PetDicaHistorico[] // Oposto de PetDicaHistorico.dica
   etapas     DicaEtapa[]
   respostas  PetDicaResposta[]
 
@@ -163,24 +165,48 @@ model DicaOpcao {
 }
 
 
+model PetDicaHistorico {
+  id          String   @id @default(uuid())
+  
+  petId       String
+  pet         Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  dicaId      String
+  dica        Dica     @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+
+  resultadoIA String?  @db.Text
+  concluida   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  respostas   PetDicaResposta[]
+
+  @@map("pet_dica_historicos")
+}
+
+// Ajustar o PetDicaResposta para apontar para o Historico em vez de diretamente para o Pet/Dica (opcional, mas recomendado para manter histórico)
 model PetDicaResposta {
-  id        String @id @default(uuid())
+  id          String   @id @default(uuid())
+  
+  historicoId String
+  historico   PetDicaHistorico @relation(fields: [historicoId], references: [id], onDelete: Cascade)
 
-  petId    String
-  pet      Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+  // ADICIONE ESTAS DUAS RELAÇÕES ABAIXO
+  petId       String
+  pet         Pet      @relation(fields: [petId], references: [id])
 
-  dicaId   String
-  dica     Dica @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+  dicaId      String
+  dica        Dica     @relation(fields: [dicaId], references: [id])
 
-  etapaId  String
-  etapa    DicaEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+  etapaId     String
+  etapa       DicaEtapa @relation(fields: [etapaId], references: [id])
 
-  opcaoId  String
-  opcao    DicaOpcao @relation(fields: [opcaoId], references: [id], onDelete: Cascade)
+  opcaoId     String
+  opcao       DicaOpcao @relation(fields: [opcaoId], references: [id])
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 
-  @@unique([petId, dicaId, etapaId])
   @@map("pet_dica_respostas")
 }
 
@@ -190,6 +216,7 @@ model Analise {
   titulo      String
   descricao   String
   icone       String?
+  prompt      String?  @db.Text
 
   createdAt DateTime @default(now())
 
@@ -243,7 +270,7 @@ model AnaliseHistorico {
 
   analiseId String
   analise   Analise @relation(fields: [analiseId], references: [id])
-
+  resultadoIA String?  @db.Text
   concluida Boolean @default(false)
 
   createdAt DateTime @default(now())
