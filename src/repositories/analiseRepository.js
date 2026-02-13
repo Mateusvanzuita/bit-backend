@@ -7,17 +7,15 @@ class AnaliseRepository extends BaseRepository {
     super('analise');
   }
 
-  async createHistorico(petId, analiseId) {
-    return await prisma.analiseHistorico.create({
-      data: {
-        petId,
-        analiseId,
-        concluida: true,
-        petId: data.petId,
-        dicaId: data.dicaId
-      }
-    });
-  }
+async createHistorico(petId, analiseId) {
+  return await prisma.analiseHistorico.create({
+    data: {
+      petId: petId,      // Corrigido: usando o parâmetro da função
+      analiseId: analiseId, // Corrigido: usando o parâmetro da função
+      concluida: false   // Inicia como false até a IA responder
+    }
+  });
+}
 
   async findFullAnalise(id) {
     return await prisma.analise.findUnique({
