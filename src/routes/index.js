@@ -4,6 +4,7 @@ const petRoutes = require('./petRoutes');
 const dashboardRoutes = require('./dashboardRoutes');
 const dicaRoutes = require('./dicaRoutes');
 const analiseRoutes = require('./analiseRoutes');
+const termosRoutes = require('./termosRoutes')
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use('/pets', petRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/dicas', dicaRoutes);
 router.use('/analises', analiseRoutes);
+router.use('/termos', termosRoutes);
 
 module.exports = router;

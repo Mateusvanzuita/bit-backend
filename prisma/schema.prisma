@@ -29,6 +29,7 @@ model User {
   pets            Pet[]
   notificacoes Notificacao[]
   salvos Salvo[]
+  aceiteTermos UserAceiteTermos[]
 
   @@map("users")
 }
@@ -333,6 +334,46 @@ model BannerHome {
 
   @@index([ativo])
   @@map("banners_home")
+}
+
+model PoliticaPrivacidade {
+  id             String   @id @default(uuid())
+  versao         String?  @unique // Opcional
+  conteudo       String?  @db.Text // Opcional
+  publicadoEm    DateTime @default(now())
+  
+  aceites        UserAceiteTermos[]
+
+  @@map("politicas_privacidade")
+}
+
+model TermoUso {
+  id             String   @id @default(uuid())
+  versao         String?  @unique // Opcional
+  conteudo       String?  @db.Text // Opcional
+  publicadoEm    DateTime @default(now())
+
+  aceites        UserAceiteTermos[]
+
+  @@map("termos_uso")
+}
+
+model UserAceiteTermos {
+  id                    String   @id @default(uuid())
+  
+  userId                String?
+  user                  User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  politicaPrivacidadeId String?
+  politicaPrivacidade   PoliticaPrivacidade? @relation(fields: [politicaPrivacidadeId], references: [id])
+
+  termoUsoId            String?
+  termoUso              TermoUso?            @relation(fields: [termoUsoId], references: [id])
+
+  aceitoEm              DateTime @default(now())
+  ip                    String?
+
+  @@map("user_aceite_termos")
 }
 
 
