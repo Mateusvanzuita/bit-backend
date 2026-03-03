@@ -195,7 +195,7 @@ model PetDicaResposta {
 
   // ADICIONE ESTAS DUAS RELAÇÕES ABAIXO
   petId       String
-  pet         Pet      @relation(fields: [petId], references: [id])
+  pet         Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
 
   dicaId      String
   dica        Dica     @relation(fields: [dicaId], references: [id])
