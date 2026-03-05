@@ -20,18 +20,37 @@ class DicaRepository extends BaseRepository {
 
   async createHistorico(petId, dicaId) {
     return await prisma.petDicaHistorico.create({
-      data: { petId, dicaId, concluida: true }
+      data: { 
+        petId, 
+        dicaId, 
+        concluida: false // Começa falso pois a IA ainda vai processar
+      }
     });
   }
 
-  async createResposta(data) {
-    return await prisma.petDicaResposta.create({ data });
-  }
+// src/repositories/dicaRepository.js
+
+async createResposta(data) {
+  return await prisma.petDicaResposta.create({
+    data: {
+      historicoId: data.historicoId,
+      petId: data.petId,
+      dicaId: data.dicaId,
+      etapaId: data.etapaId,
+      opcaoId: data.opcaoId || null,
+      // Alterado de 'texto' para 'valor' para bater com o teu PostgreSQL
+      valor: data.texto || data.valor || null 
+    }
+  });
+}
 
   async updateResultadoIA(historicoId, textoIA) {
     return await prisma.petDicaHistorico.update({
       where: { id: historicoId },
-      data: { resultadoIA: textoIA }
+      data: { 
+        resultadoIA: textoIA,
+        concluida: true // Agora sim marca como concluída
+      }
     });
   }
 

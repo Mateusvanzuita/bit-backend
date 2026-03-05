@@ -193,7 +193,6 @@ model PetDicaResposta {
   historicoId String
   historico   PetDicaHistorico @relation(fields: [historicoId], references: [id], onDelete: Cascade)
 
-  // ADICIONE ESTAS DUAS RELAÇÕES ABAIXO
   petId       String
   pet         Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
 
@@ -203,8 +202,12 @@ model PetDicaResposta {
   etapaId     String
   etapa       DicaEtapa @relation(fields: [etapaId], references: [id])
 
-  opcaoId     String
-  opcao       DicaOpcao @relation(fields: [opcaoId], references: [id])
+  // Alterado para opcional (?) para permitir perguntas de texto puro
+  opcaoId     String?
+  opcao       DicaOpcao? @relation(fields: [opcaoId], references: [id])
+
+  // CAMPO FALTANTE ADICIONADO ABAIXO:
+  valor       String?   @db.Text
 
   createdAt   DateTime @default(now())
 
@@ -286,8 +289,8 @@ model AnaliseHistorico {
 model AnaliseResposta {
   id String @id @default(uuid())
 
-  historicoId String
-  historico   AnaliseHistorico @relation(fields: [historicoId], references: [id], onDelete: Cascade)
+  historicoId String?
+  historico   AnaliseHistorico? @relation(fields: [historicoId], references: [id], onDelete: Cascade)
 
   etapaId String
   etapa   AnaliseEtapa @relation(fields: [etapaId], references: [id])

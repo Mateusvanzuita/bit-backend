@@ -8,15 +8,16 @@ const openai = new OpenAI({
 class AIService {
   async gerarAnaliseBitzy(promptCompleto) {
     try {
-      const response = await openai.responses.create({
-        model: "gpt-5-nano",
-        input: promptCompleto,
-        store: true,
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", 
+        messages: [
+          { role: "system", content: "Você é o assistente virtual da Bitzy, especialista em saúde e bem-estar pet." },
+          { role: "user", content: promptCompleto }
+        ],
+        temperature: 0.7,
       });
+      return response.choices[0].message.content;
 
-      // Seguindo o modelo de retorno do seu exemplo
-      const result = await response;
-      return result.output_text;
     } catch (error) {
       console.error('Erro ao chamar OpenAI:', error);
       return "Desculpe, não conseguimos processar a análise agora. Por favor, consulte um veterinário.";
