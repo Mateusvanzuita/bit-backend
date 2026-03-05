@@ -30,6 +30,15 @@ class SalvoService {
       orderBy: { createdAt: 'desc' }
     });
   }
+
+  async removerItem(userId, id) {
+  return await prisma.salvo.delete({
+    where: {
+      id,
+      userId // Garante que o usuário só delete o que é dele
+    }
+  });
+}
 }
 
 module.exports = new SalvoService();

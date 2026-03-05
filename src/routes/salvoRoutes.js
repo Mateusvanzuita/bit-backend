@@ -14,4 +14,9 @@ router.get('/', async (req, res) => {
   res.status(200).json({ status: 'success', data: salvos });
 });
 
+router.delete('/:id', async (req, res) => {
+  await salvoService.removerItem(req.user.id, req.params.id);
+  res.status(200).json({ status: 'success', message: 'Item removido' });
+});
+
 module.exports = router;

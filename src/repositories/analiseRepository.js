@@ -54,7 +54,7 @@ async createHistorico(petId, analiseId) {
   async findHistoricoById(id) {
   return await prisma.analiseHistorico.findUnique({
     where: { id },
-    include: { analise: true } // Inclui dados da análise se precisar do título no frontend
+    include: { analise: true, pet: true } // Inclui dados da análise se precisar do título no frontend
   });
 }
 }

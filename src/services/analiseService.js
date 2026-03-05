@@ -48,12 +48,12 @@ async salvarAnaliseCompleta(userId, petId, analiseId, respostas) {
     // 5. Montar o Prompt Final com tratamento de segurança para campos opcionais
     // Evita erro se convivencia for nulo ou não for um array
     const convivenciaStr = Array.isArray(pet.convivencia) ? pet.convivencia.join(', ') : 'Não informada';
-    
+    const corStr = pet.cor || 'N/D';
     const promptFinal = `
       ${analiseBase.prompt}
       
       DADOS DO PET:
-      Nome: ${pet.nome}, Espécie: ${pet.especie}, Raça: ${pet.raca || 'N/D'}, 
+      Nome: ${pet.nome}, Espécie: ${pet.especie}, Raça: ${pet.raca || 'N/D'}, Cor: ${corStr},
       Idade: ${pet.idade} anos e ${pet.meses} meses, Sexo: ${pet.sexo}, 
       Porte: ${pet.porte}, Castrado: ${pet.castrado ? 'Sim' : 'Não'}, 
       Comportamento: ${pet.comportamento}, Convivência: ${convivenciaStr}.
