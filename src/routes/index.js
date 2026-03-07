@@ -6,6 +6,7 @@ const dicaRoutes = require('./dicaRoutes');
 const analiseRoutes = require('./analiseRoutes');
 const termosRoutes = require('./termosRoutes')
 const salvoRoutes = require('./salvoRoutes')
+const sosRoutes = require('./sosRoutes');
 
 const router = express.Router();
 
@@ -26,5 +27,6 @@ router.use('/dicas', dicaRoutes);
 router.use('/analises', analiseRoutes);
 router.use('/termos', termosRoutes);
 router.use('/salvos', salvoRoutes);
+router.use('/sos', sosRoutes);
 
 module.exports = router;

@@ -30,6 +30,7 @@ model User {
   notificacoes Notificacao[]
   salvos Salvo[]
   aceiteTermos UserAceiteTermos[]
+    sosAtendimentos SosAtendimento[]
 
   @@map("users")
 }
@@ -112,7 +113,7 @@ model Pet {
   historicosDicas       PetDicaHistorico[] // Oposto de PetDicaHistorico.pet
   respostasDicas        PetDicaResposta[]
   analises AnaliseHistorico[]
-
+  sosAtendimentos SosAtendimento[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -337,6 +338,22 @@ model BannerHome {
 
   @@index([ativo])
   @@map("banners_home")
+}
+
+model SosAtendimento {
+  id           String   @id @default(uuid())
+  mensagemUser String   @db.Text
+  respostaIA   String   @db.Text
+  
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@map("sos_atendimentos")
 }
 
 model PoliticaPrivacidade {
