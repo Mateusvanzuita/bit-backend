@@ -235,7 +235,6 @@ Seja conciso, direto e clínico!
         atendimentoId,
         {
           respostaIA: respostaIA,
-          updatedAt: new Date()
         }
       );
 
