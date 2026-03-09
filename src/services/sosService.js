@@ -2,6 +2,7 @@ const petRepository = require('../repositories/petRepository');
 const aiService = require('./aiService');
 const sosRepository = require('../repositories/sosRepository');
 const { AppError } = require('../middlewares/errorHandler');
+const { SYSTEM_PROMPT, buildPrimeiroAtendimentoPrompt, buildContinuacaoChatPrompt } = require('../utils/sosPrompt');
 
 /**
  * ========== CACHE DE RESPOSTAS ==========
@@ -65,29 +66,14 @@ Castrado: ${pet.castrado ? 'Sim' : 'Não'}
         console.log(`✅ [CACHE] Resposta encontrada no cache!`);
         respostaIA = cachedResponse;
       } else {
-        // 5. Prompt otimizado para PRIMEIRA mensagem
-        const promptFinal = `
-DADOS DO PET:
-${dadosPet}
-
-PROBLEMA/DÚVIDA DO TUTOR:
-${mensagemUser}
-
-VOCÊ É O SOS BITZY, UM VETERINÁRIO VIRTUAL ESPECIALISTA EM PETS.
-
-RESPONDA RAPIDAMENTE:
-1. **Diagnóstico preliminar**: O que pode estar acontecendo (máximo 2 linhas)
-2. **Recomendações imediatas**: O que fazer agora (máximo 3 linhas)
-3. **Próximas perguntas**: Faça 2-3 perguntas de acompanhamento para entender melhor (no final da resposta)
-
-Seja direto, claro e reconfortante. Faça perguntas para continuar conversando!
-        `.trim();
+        // 5. Montar prompt da primeira mensagem
+        const promptFinal = buildPrimeiroAtendimentoPrompt(dadosPet, mensagemUser);
 
         // 6. Chamar IA
         console.log('🤖 [IA] Enviando para OpenAI...');
         const iaStartTime = Date.now();
 
-        respostaIA = await aiService.gerarAnaliseBitzy(promptFinal);
+        respostaIA = await aiService.gerarAnaliseBitzy(promptFinal, SYSTEM_PROMPT);
 
         const iaTime = Date.now() - iaStartTime;
         console.log(`✅ [IA] Resposta gerada em ${iaTime}ms`);
@@ -179,35 +165,13 @@ Castrado: ${pet.castrado ? 'Sim' : 'Não'}
         .map(msg => `${msg.role === 'user' ? 'TUTOR' : 'SOS BITZY'}: ${msg.content}`)
         .join('\n\n');
 
-      const promptFinal = `
-DADOS DO PET:
-${dadosPet}
-
-===== HISTÓRICO DA CONVERSA =====
-${historicoTexto}
-
-===== NOVA MENSAGEM DO TUTOR =====
-${novaMensagem}
-
-===== INSTRUÇÕES =====
-VOCÊ É O SOS BITZY, VETERINÁRIO VIRTUAL.
-
-Você já discutiu o problema inicial com o tutor. Agora responda esta nova mensagem considerando o contexto da conversa.
-
-RESPONDA:
-1. **Responder à pergunta/informação** (máximo 4 linhas)
-2. **Próxima ação ou pergunta** (máximo 2 linhas)
-
-Se o tutor parecer satisfeito ou disser que vai ao veterinário, encerre com uma mensagem reconfortante.
-
-Seja conciso, direto e clínico!
-      `.trim();
+      const promptFinal = buildContinuacaoChatPrompt(dadosPet, historicoTexto, novaMensagem);
 
       // 6. Chamar IA
       console.log('🤖 [CHAT] Enviando para OpenAI...');
       const iaStartTime = Date.now();
 
-      const respostaIA = await aiService.gerarAnaliseBitzy(promptFinal);
+      const respostaIA = await aiService.gerarAnaliseBitzy(promptFinal, SYSTEM_PROMPT);
 
       const iaTime = Date.now() - iaStartTime;
       console.log(`✅ [CHAT] Resposta gerada em ${iaTime}ms`);
