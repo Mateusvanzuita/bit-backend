@@ -350,7 +350,9 @@ model SosAtendimento {
   
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  historico String? @db.Text 
 
+  status    String  @default("ativo") 
   createdAt    DateTime @default(now())
 
   @@map("sos_atendimentos")
