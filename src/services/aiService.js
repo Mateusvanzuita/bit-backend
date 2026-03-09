@@ -12,7 +12,7 @@ class AIService {
   /**
    * Gera análise Bitzy COM CORREÇÃO DO TIMEOUT
    */
-  async gerarAnaliseBitzy(promptCompleto, retryCount = 0) {
+  async gerarAnaliseBitzy(promptCompleto, systemPrompt = null, retryCount = 0) {
     try {
       const startTime = Date.now();
       
@@ -21,7 +21,7 @@ class AIService {
       console.log('🔑 [IA] API Key presente?', !!process.env.OPENAI_API_KEY);
       console.log('🤖 [IA] Modelo:', 'gpt-4o-mini');
       console.log('📝 [IA] Prompt size:', promptCompleto.length, 'caracteres');
-      console.log('⏱️  [IA] Max tokens: 200');
+      console.log('⏱️  [IA] Max tokens: 500');
       console.log('=========================================\n');
 
       // Validação de API Key
@@ -33,15 +33,17 @@ class AIService {
         throw new Error('❌ OPENAI_API_KEY não começa com "sk-" (formato inválido)');
       }
 
+      // System prompt: usa o passado por parâmetro ou fallback mínimo
+      const systemContent = systemPrompt || 'Você é o SOS Bitzy. Responda BREVEMENTE em máximo 150 palavras. Seja direto e prático.';
+
       console.log('📤 [IA] Enviando requisição para OpenAI...');
 
-      // ✅ CORREÇÃO: Remover timeout daqui e colocar APENAS os parâmetros válidos
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           { 
             role: "system", 
-            content: "Você é o SOS Bitzy. Responda BREVEMENTE em máximo 150 palavras. Seja direto e prático." 
+            content: systemContent,
           },
           { 
             role: "user", 
@@ -49,8 +51,7 @@ class AIService {
           }
         ],
         temperature: 0.7,
-        max_tokens: 200,
-        // ❌ NÃO colocar timeout aqui! OpenAI não reconhece este parâmetro
+        max_tokens: 500,
       });
 
       console.log('✅ [IA] Resposta recebida com sucesso!');
@@ -75,7 +76,7 @@ class AIService {
       if (retryCount < 2 && this.isRetryableError(error)) {
         console.log(`🔄 [IA] Retry ${retryCount + 1}/2 em 2 segundos...\n`);
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        return this.gerarAnaliseBitzy(promptCompleto, retryCount + 1);
+        return this.gerarAnaliseBitzy(promptCompleto, systemPrompt, retryCount + 1);
       }
 
       // ✅ RESPOSTA DE FALLBACK
