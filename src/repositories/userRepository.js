@@ -34,6 +34,26 @@ async createUser(data) {
     },
   });
 }
+async update(id, data) {
+  return await prisma.user.update({
+    where: { id },
+    data,
+    select: { // Retorna o usuário sem a senha por segurança
+      id: true,
+      email: true,
+      nome: true,
+      sexo: true,
+      dataNascimento: true,
+      avatar: true,
+    }
+  });
+}
+
+async delete(id) {
+  return await prisma.user.delete({
+    where: { id },
+  });
+}
 }
 
 module.exports = new UserRepository();

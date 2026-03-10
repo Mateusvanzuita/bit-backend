@@ -29,6 +29,18 @@ class PetRepository extends BaseRepository {
       }
     });
   }
+
+  async findVaccinesByPetId(petId) {
+  return await prisma.vacina.findMany({
+    where: { petId },
+    include: {
+      doses: {
+        orderBy: { dataAplicada: 'desc' } // Doses mais recentes primeiro
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+}
 }
 
 module.exports = new PetRepository();

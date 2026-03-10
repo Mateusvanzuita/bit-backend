@@ -33,20 +33,36 @@ async register(userData) {
 }
 
   async login(email, password) {
-    const user = await userRepository.findByEmail(email);
-    if (!user) {
-      throw new AppError('Invalid credentials', 401);
+    // 1. Valida formato básico antes de bater no banco
+    if (!email || !password) {
+      throw new AppError('Preencha o e-mail e a senha para continuar.', 400);
     }
 
-    // AQUI: Alterar de user.password para user.senha
-    const isPasswordValid = await bcrypt.compare(password, user.senha); 
-    if (!isPasswordValid) {
-      throw new AppError('Invalid credentials', 401);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new AppError('Informe um endereço de e-mail válido.', 400);
     }
+
+    // 2. Busca o usuário — mesma mensagem para não vazar se o e-mail existe
+    const user = await userRepository.findByEmail(email);
+    if (!user) {
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+    }
+
+    // 3. Verifica senha
+    const isPasswordValid = await bcrypt.compare(password, user.senha);
+    if (!isPasswordValid) {
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+    }
+
+    // 4. Verifica se a conta está ativa (caso você tenha esse campo futuramente)
+    // if (!user.ativo) {
+    //   throw new AppError('Esta conta foi desativada. Entre em contato com o suporte.', 403);
+    // }
 
     const token = generateToken({ id: user.id, email: user.email });
 
-    // AQUI: Remover 'senha' do objeto de resposta
+    // 5. Remove senha da resposta
     const { senha: _, ...userWithoutPassword } = user;
 
     return { user: userWithoutPassword, token };
@@ -60,6 +76,46 @@ async register(userData) {
 
     const { password: _, ...userWithoutPassword } = user;
     return userWithoutPassword;
+  }
+
+  async updateProfile(userId, updateData) {
+  // Mapeamos os campos do App (Inglês) para o Prisma (Português)
+  const data = {
+    nome: updateData.name,
+    sexo: updateData.sex ? updateData.sex.toUpperCase() : undefined,
+    dataNascimento: updateData.birthDate ? new Date(updateData.birthDate) : undefined,
+  };
+
+  // Remove campos indefinidos para não sobrescrever com null por erro
+  Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
+
+  return await userRepository.update(userId, data);
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await userRepository.findById(userId);
+    
+    // 1. Verifica se a senha atual está correta
+    const isMatch = await bcrypt.compare(currentPassword, user.senha);
+    if (!isMatch) {
+      throw new AppError('Senha atual incorreta', 401);
+    }
+
+    // 2. Hash da nova senha
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // 3. Atualiza no banco
+    return await userRepository.update(userId, { senha: hashedNewPassword });
+  }
+  
+  async deleteAccount(userId) {
+    // Opcional: Você pode adicionar verificações extras aqui antes de deletar
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('Usuário não encontrado', 404);
+    }
+
+    return await userRepository.delete(userId);
   }
 }
 
