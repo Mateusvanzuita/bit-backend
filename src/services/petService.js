@@ -121,7 +121,42 @@ class PetService {
           observacoes: data.notes
         }
       });
-    }
+  }
+
+  // ── DELETE VACINA COMPLETA
+  // As doses são removidas em cascata pelo Prisma (onDelete: Cascade no schema)
+async deleteVaccine(vaccineId, userId) {
+    // Busca a vacina incluindo o pet para validar o dono
+    const vacina = await prisma.vacina.findUnique({
+      where: { id: vaccineId },
+      include: { pet: { select: { userId: true } } }
+    });
+
+    console.log('[deleteVaccine] vaccineId:', vaccineId, '| userId:', userId, '| vacina:', vacina);
+
+    if (!vacina) throw new AppError('Vacina não encontrada', 404);
+    if (vacina.pet.userId !== userId) throw new AppError('Acesso negado', 403);
+
+    await prisma.vacina.delete({ where: { id: vaccineId } });
+  }
+
+  // ── DELETE DOSE ESPECÍFICA
+  async deleteDose(vaccineId, doseId, userId) {
+    const dose = await prisma.doseVacina.findUnique({
+      where: { id: doseId },
+      include: {
+        vacina: { include: { pet: { select: { userId: true } } } }
+      }
+    });
+
+    console.log('[deleteDose] doseId:', doseId, '| vaccineId:', vaccineId, '| userId:', userId, '| dose:', dose);
+
+    if (!dose) throw new AppError('Dose não encontrada', 404);
+    if (dose.vacinaId !== vaccineId) throw new AppError('Dose não pertence a esta vacina', 400);
+    if (dose.vacina.pet.userId !== userId) throw new AppError('Acesso negado', 403);
+
+    await prisma.doseVacina.delete({ where: { id: doseId } });
+  }
 }
 
 module.exports = new PetService();

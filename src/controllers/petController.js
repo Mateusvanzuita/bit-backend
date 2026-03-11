@@ -45,6 +45,18 @@ getVaccines = asyncHandler(async (req, res) => {
     const dose = await petService.addDose(req.params.id, req.user.id, req.body);
     res.status(201).json({ status: 'success', data: { dose } });
   });
+
+  // ── DELETE VACINA COMPLETA (+ todas as doses em cascata)
+  deleteVaccine = asyncHandler(async (req, res) => {
+    await petService.deleteVaccine(req.params.id, req.user.id);
+    res.status(204).send();
+  });
+
+  // ── DELETE DOSE ESPECÍFICA
+  deleteDose = asyncHandler(async (req, res) => {
+    await petService.deleteDose(req.params.vaccineId, req.params.doseId, req.user.id);
+    res.status(204).send();
+  });
 }
 
 module.exports = new PetController();
