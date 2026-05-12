@@ -2,38 +2,33 @@ const app = require('./app');
 const config = require('./config/env');
 const prisma = require('./config/database');
 
-const server = app.listen(config.port, () => {
-  console.log(`
-🚀 Server is running!
-📡 Port: ${config.port}
-🌍 Environment: ${config.nodeEnv}
-📝 API Documentation: http://localhost:${config.port}/api/v1/health
-  `);
-});
+const startServer = async () => {
+  await prisma.$connect();
+  console.log('✅ Banco de dados conectado');
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-  console.error(err.name, err.message);
-  server.close(() => {
-    process.exit(1);
+  const server = app.listen(config.port, () => {
+    console.log(`🚀 Server running on port ${config.port} [${config.nodeEnv}]`);
   });
-});
 
-// Handle SIGTERM
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  server.close(() => {
-    console.log('💥 Process terminated!');
+  process.on('unhandledRejection', (err) => {
+    console.error('UNHANDLED REJECTION 💥', err.name, err.message);
+    server.close(() => process.exit(1));
   });
-});
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('👋 SIGINT RECEIVED. Shutting down gracefully');
-  await prisma.$disconnect();
-  server.close(() => {
-    console.log('💥 Process terminated!');
-    process.exit(0);
+  process.on('SIGTERM', async () => {
+    console.log('👋 SIGTERM — graceful shutdown');
+    await prisma.$disconnect();
+    server.close(() => process.exit(0));
   });
+
+  process.on('SIGINT', async () => {
+    console.log('👋 SIGINT — graceful shutdown');
+    await prisma.$disconnect();
+    server.close(() => process.exit(0));
+  });
+};
+
+startServer().catch((err) => {
+  console.error('❌ Falha ao iniciar servidor:', err);
+  process.exit(1);
 });

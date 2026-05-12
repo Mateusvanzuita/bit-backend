@@ -25,6 +25,17 @@ const corsOptions = {
 };
 
 // Middlewares
+const prisma = require('./config/database'); // adicionar este import
+
+// Health check — antes das rotas
+app.get('/api/v1/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({ status: 'ok', uptime: process.uptime() });
+  } catch {
+    res.status(503).json({ status: 'error' });
+  }
+});
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
