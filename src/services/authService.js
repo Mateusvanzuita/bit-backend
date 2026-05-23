@@ -1,68 +1,50 @@
+// src/services/authService.js
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const prisma = require('../config/database');
 const userRepository = require('../repositories/userRepository');
-const { generateToken } = require('../utils/jwt');
+const { generateToken, decodeToken } = require('../utils/jwt');
 const { AppError } = require('../middlewares/errorHandler');
+const emailService = require('./emailService');
 
 class AuthService {
-async register(userData) {
-  // 1. Verifica se já existe
-  const existingUser = await userRepository.findByEmail(userData.email);
-  if (existingUser) {
-    throw new AppError('Email já em uso', 400);
-  }
+  async register(userData) {
+    const existingUser = await userRepository.findByEmail(userData.email);
+    if (existingUser) throw new AppError('Email já em uso', 400);
 
-  // 2. Hash da senha (O App envia 'password')
-  const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-  // 3. Monte o objeto EXATAMENTE como o seu schema.prisma exige
-  // Note que o log do Prisma reclamou que 'nome' (em português) estava faltando
-  const formattedData = {
-    email: userData.email,
-    nome: userData.name,        // Mapeia 'name' do App para 'nome'
-    senha: hashedPassword,      // Mapeia 'password' do App para 'senha'
-    sexo: userData.sex,         // Mapeia 'sex' do App para 'sexo'
-    dataNascimento: userData.birthDate ? new Date(userData.birthDate) : null
-  };
+    const formattedData = {
+      email: userData.email,
+      nome: userData.name,
+      senha: hashedPassword,
+      sexo: userData.sex,
+      dataNascimento: userData.birthDate ? new Date(userData.birthDate) : null,
+    };
 
-  // 4. Envia o objeto formatado para o repositório
-  const user = await userRepository.createUser(formattedData);
-
-  const token = generateToken({ id: user.id, email: user.email });
-
-  return { user, token };
-}
-
-  async login(email, password) {
-    // 1. Valida formato básico antes de bater no banco
-    if (!email || !password) {
-      throw new AppError('Preencha o e-mail e a senha para continuar.', 400);
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new AppError('Informe um endereço de e-mail válido.', 400);
-    }
-
-    // 2. Busca o usuário — mesma mensagem para não vazar se o e-mail existe
-    const user = await userRepository.findByEmail(email);
-    if (!user) {
-      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
-    }
-
-    // 3. Verifica senha
-    const isPasswordValid = await bcrypt.compare(password, user.senha);
-    if (!isPasswordValid) {
-      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
-    }
-
-    // 4. Verifica se a conta está ativa (caso você tenha esse campo futuramente)
-    // if (!user.ativo) {
-    //   throw new AppError('Esta conta foi desativada. Entre em contato com o suporte.', 403);
-    // }
-
+    const user = await userRepository.createUser(formattedData);
     const token = generateToken({ id: user.id, email: user.email });
 
-    // 5. Remove senha da resposta
+    return { user, token };
+  }
+
+  async login(email, password) {
+    if (!email || !password)
+      throw new AppError('Preencha o e-mail e a senha para continuar.', 400);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email))
+      throw new AppError('Informe um endereço de e-mail válido.', 400);
+
+    const user = await userRepository.findByEmail(email);
+    if (!user)
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+
+    const isPasswordValid = await bcrypt.compare(password, user.senha);
+    if (!isPasswordValid)
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+
+    const token = generateToken({ id: user.id, email: user.email });
     const { senha: _, ...userWithoutPassword } = user;
 
     return { user: userWithoutPassword, token };
@@ -70,52 +52,128 @@ async register(userData) {
 
   async getProfile(userId) {
     const user = await userRepository.findById(userId);
-    if (!user) {
-      throw new AppError('User not found', 404);
-    }
+    if (!user) throw new AppError('User not found', 404);
 
     const { password: _, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
 
   async updateProfile(userId, updateData) {
-  // Mapeamos os campos do App (Inglês) para o Prisma (Português)
-  const data = {
-    nome: updateData.name,
-    sexo: updateData.sex ? updateData.sex.toUpperCase() : undefined,
-    dataNascimento: updateData.birthDate ? new Date(updateData.birthDate) : undefined,
-  };
+    const data = {
+      nome: updateData.name,
+      sexo: updateData.sex ? updateData.sex.toUpperCase() : undefined,
+      dataNascimento: updateData.birthDate ? new Date(updateData.birthDate) : undefined,
+    };
 
-  // Remove campos indefinidos para não sobrescrever com null por erro
-  Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
-
-  return await userRepository.update(userId, data);
+    Object.keys(data).forEach((key) => data[key] === undefined && delete data[key]);
+    return await userRepository.update(userId, data);
   }
 
   async changePassword(userId, currentPassword, newPassword) {
     const user = await userRepository.findById(userId);
-    
-    // 1. Verifica se a senha atual está correta
+
     const isMatch = await bcrypt.compare(currentPassword, user.senha);
-    if (!isMatch) {
-      throw new AppError('Senha atual incorreta', 401);
-    }
+    if (!isMatch) throw new AppError('Senha atual incorreta', 401);
 
-    // 2. Hash da nova senha
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-    // 3. Atualiza no banco
     return await userRepository.update(userId, { senha: hashedNewPassword });
   }
-  
+
   async deleteAccount(userId) {
-    // Opcional: Você pode adicionar verificações extras aqui antes de deletar
     const user = await userRepository.findById(userId);
-    if (!user) {
-      throw new AppError('Usuário não encontrado', 404);
+    if (!user) throw new AppError('Usuário não encontrado', 404);
+    return await userRepository.delete(userId);
+  }
+
+  async refreshToken(oldToken) {
+    const decoded = decodeToken(oldToken);
+    if (!decoded?.id) throw new AppError('Token inválido', 401);
+
+    const user = await userRepository.findById(decoded.id);
+    if (!user) throw new AppError('Usuário não encontrado', 401);
+
+    const newToken = generateToken({ id: user.id, email: user.email });
+    const { senha: _, ...userWithoutPassword } = user;
+
+    return { user: userWithoutPassword, token: newToken };
+  }
+
+  // ─── ESQUECEU A SENHA ────────────────────────────────────────────────────
+
+  async sendPasswordResetCode(email) {
+    // Busca o usuário — mas sempre retorna a mesma mensagem para não vazar
+    // se o email existe ou não (proteção contra enumeração)
+    const user = await userRepository.findByEmail(email);
+    if (!user) return; // silencioso
+
+    // Invalida códigos anteriores do mesmo email
+    await prisma.passwordResetCode.updateMany({
+      where: { email, used: false },
+      data: { used: true },
+    });
+
+    // Gera código de 6 dígitos
+    const code = crypto.randomInt(100000, 999999).toString();
+    const hashedCode = await bcrypt.hash(code, 10);
+
+    await prisma.passwordResetCode.create({
+      data: {
+        email,
+        code: hashedCode,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutos
+      },
+    });
+
+    await emailService.sendPasswordResetCode(email, user.nome, code);
+  }
+
+  async verifyPasswordResetCode(email, code) {
+    // Busca o código mais recente não utilizado para este email
+    const record = await prisma.passwordResetCode.findFirst({
+      where: { email, used: false },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) throw new AppError('Código inválido ou expirado.', 400);
+    if (record.expiresAt < new Date()) throw new AppError('Código expirado. Solicite um novo.', 400);
+
+    const isValid = await bcrypt.compare(code, record.code);
+    if (!isValid) throw new AppError('Código incorreto. Verifique e tente novamente.', 400);
+
+    // Marca como usado imediatamente para evitar reuso
+    await prisma.passwordResetCode.update({
+      where: { id: record.id },
+      data: { used: true },
+    });
+
+    // Gera um token temporário de reset (válido por 10 minutos)
+    // Usamos um token simples assinado com o id do record para evitar
+    // que qualquer outro email use este token
+    const resetToken = generateToken(
+      { id: record.id, email, type: 'password_reset' },
+      '10m',
+    );
+
+    return { resetToken };
+  }
+
+  async resetPassword(resetToken, newPassword) {
+    let decoded;
+    try {
+      const { verifyToken } = require('../utils/jwt');
+      decoded = verifyToken(resetToken);
+    } catch {
+      throw new AppError('Token de redefinição inválido ou expirado.', 400);
     }
 
-    return await userRepository.delete(userId);
+    if (decoded.type !== 'password_reset')
+      throw new AppError('Token inválido.', 400);
+
+    const user = await userRepository.findByEmail(decoded.email);
+    if (!user) throw new AppError('Usuário não encontrado.', 404);
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(user.id, { senha: hashedPassword });
   }
 }
 
