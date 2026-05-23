@@ -7,7 +7,9 @@ const FROM_EMAIL = 'Bitzy <noreply@bitzy.pet>';
 
 const emailService = {
   async sendPasswordResetCode(toEmail, userName, code) {
-    await resend.emails.send({
+    console.log(`📧 Tentando enviar email para: ${toEmail}`);
+
+    const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: toEmail,
       subject: 'Seu código de redefinição de senha — Bitzy',
@@ -91,6 +93,13 @@ const emailService = {
         </html>
       `,
     });
+
+    if (error) {
+      console.error('❌ Resend error:', JSON.stringify(error));
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Email enviado com sucesso. ID:', data?.id);
   },
 };
 
