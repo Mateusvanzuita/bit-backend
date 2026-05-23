@@ -12,7 +12,7 @@ const emailService = {
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: toEmail,
-      subject: 'Seu código de redefinição de senha — Bitzy',
+      subject: 'Seu código de redefinição de senha - Bitzy',
       html: `
         <!DOCTYPE html>
         <html lang="pt-BR">
