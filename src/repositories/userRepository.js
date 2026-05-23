@@ -21,39 +21,50 @@ class UserRepository extends BaseRepository {
     });
   }
 
-async createUser(data) {
-  return await prisma.user.create({
-    data: data, // Agora o 'data' já contém 'nome', 'senha', etc.
-    select: {
-      id: true,
-      email: true,
-      nome: true,
-      avatar: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-}
-async update(id, data) {
-  return await prisma.user.update({
-    where: { id },
-    data,
-    select: { // Retorna o usuário sem a senha por segurança
-      id: true,
-      email: true,
-      nome: true,
-      sexo: true,
-      dataNascimento: true,
-      avatar: true,
-    }
-  });
-}
+  async createUser(data) {
+    return await prisma.user.create({
+      data: data,
+      select: {
+        id: true,
+        email: true,
+        nome: true,
+        avatar: true,
+        latitude: true,
+        longitude: true,
+        cidade: true,
+        estado: true,
+        pais: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
 
-async delete(id) {
-  return await prisma.user.delete({
-    where: { id },
-  });
-}
+  async update(id, data) {
+    return await prisma.user.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        email: true,
+        nome: true,
+        sexo: true,
+        dataNascimento: true,
+        avatar: true,
+        latitude: true,
+        longitude: true,
+        cidade: true,
+        estado: true,
+        pais: true,
+      },
+    });
+  }
+
+  async delete(id) {
+    return await prisma.user.delete({
+      where: { id },
+    });
+  }
 }
 
 module.exports = new UserRepository();

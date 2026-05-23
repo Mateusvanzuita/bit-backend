@@ -29,6 +29,7 @@ router.post('/reset-password', resetPasswordValidator, validate, authController.
 router.get('/profile', authMiddleware, authController.getProfile);
 router.put('/profile', authMiddleware, authController.updateProfile);
 router.patch('/change-password', authMiddleware, authController.changePassword);
+router.patch('/location', authMiddleware, authController.updateLocation); 
 router.delete('/delete-account', authMiddleware, authController.deleteAccount);
 router.post('/perfil/avatar', authMiddleware, uploadUserPhoto, uploadController.uploadUserPhoto);
 

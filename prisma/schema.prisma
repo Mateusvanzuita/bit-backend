@@ -30,7 +30,13 @@ model User {
   notificacoes Notificacao[]
   salvos Salvo[]
   aceiteTermos UserAceiteTermos[]
-    sosAtendimentos SosAtendimento[]
+  sosAtendimentos SosAtendimento[]
+
+  latitude   Float?
+  longitude  Float?
+  cidade     String?
+  estado     String?
+  pais       String?   @default("BR")
 
   @@map("users")
 }

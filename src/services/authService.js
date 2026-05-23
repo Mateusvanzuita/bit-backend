@@ -175,6 +175,20 @@ class AuthService {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await userRepository.update(user.id, { senha: hashedPassword });
   }
+// Adicione este método dentro da classe AuthService no authService.js
+
+  async updateLocation(userId, locationData) {
+    const { latitude, longitude, cidade, estado, pais } = locationData;
+
+    const data = {};
+    if (latitude !== undefined) data.latitude = latitude;
+    if (longitude !== undefined) data.longitude = longitude;
+    if (cidade !== undefined) data.cidade = cidade;
+    if (estado !== undefined) data.estado = estado;
+    if (pais !== undefined) data.pais = pais;
+
+    return await userRepository.update(userId, data);
+  }
 }
 
 module.exports = new AuthService();

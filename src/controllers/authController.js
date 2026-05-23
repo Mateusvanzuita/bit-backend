@@ -74,6 +74,21 @@ class AuthController {
     await authService.resetPassword(resetToken, newPassword);
     res.status(200).json({ status: 'success', message: 'Senha redefinida com sucesso.' });
   });
+
+  // Adicione este método dentro da classe AuthController no authController.js
+
+  // PATCH /auth/location — salva localização do usuário
+  updateLocation = asyncHandler(async (req, res) => {
+    const { latitude, longitude, cidade, estado, pais } = req.body;
+    const updatedUser = await authService.updateLocation(req.user.id, {
+      latitude,
+      longitude,
+      cidade,
+      estado,
+      pais,
+    });
+    res.status(200).json({ status: 'success', data: { user: updatedUser } });
+  });
 }
 
 module.exports = new AuthController();
