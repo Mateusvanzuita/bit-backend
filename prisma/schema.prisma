@@ -31,6 +31,9 @@ model User {
   salvos Salvo[]
   aceiteTermos UserAceiteTermos[]
   sosAtendimentos SosAtendimento[]
+  petShopsSeguidores  PetShopSeguidor[]
+  petShopFavorito     PetShopFavorito?
+  cupomResgates       CupomResgate[]
 
   latitude   Float?
   longitude  Float?
@@ -448,6 +451,227 @@ model PasswordResetCode {
   @@map("password_reset_codes")
 }
 
+// ============================================================
+//  BITZY CLUB — Adições ao schema.prisma existente
+//  Cole estes models após os models existentes no seu schema.
+//  Adicione também os novos enums ao bloco de enums existente.
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────────
+//  PETSHOP PARCEIRO
+//  Estabelecimentos cadastrados no Bitzy Club (R$99/mês)
+// ─────────────────────────────────────────────────────────────
+model PetShop {
+  id            String   @id @default(uuid())
+
+  nome          String
+  descricao     String?  @db.Text
+  logoUrl       String?
+  bannerUrl     String?
+
+  // Endereço / localização
+  endereco      String
+  cidade        String
+  estado        String
+  pais          String   @default("BR")
+  latitude      Float
+  longitude     Float
+
+  // Contato
+  telefone      String?
+  whatsapp      String?
+  instagram     String?
+  website       String?
+
+  // Plano Bitzy Club
+  ativo         Boolean  @default(true)
+  planoAtivo    Boolean  @default(false)   // true = pagou R$99/mês
+  planoInicioEm DateTime?
+  planoFimEm    DateTime?                  // null = recorrente ativo
+
+  // Desconto fixo para quem FAVORITA este pet shop
+  // O pet shop escolhe o %, mínimo 5%, padrão 10%
+  descontoFavorito Float  @default(10.0)   // ex: 10.0 = 10%
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relacionamentos
+  cupons        Cupom[]
+  seguidores    PetShopSeguidor[]
+  favoritos     PetShopFavorito[]
+
+  @@index([cidade, estado])
+  @@index([latitude, longitude])
+  @@index([ativo, planoAtivo])
+  @@map("pet_shops")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  SEGUIDOR DE PET SHOP
+//  Usuário "segue" N pet shops para receber promoções
+// ─────────────────────────────────────────────────────────────
+model PetShopSeguidor {
+  id         String   @id @default(uuid())
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  petShopId  String
+  petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, petShopId])   // um usuário segue um pet shop apenas 1 vez
+  @@index([userId])
+  @@map("pet_shop_seguidores")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  FAVORITO DE PET SHOP  (limite: 1 por usuário)
+//  Quem favorita recebe o descontoFavorito permanente
+// ─────────────────────────────────────────────────────────────
+model PetShopFavorito {
+  id         String   @id @default(uuid())
+
+  userId     String   @unique   // garante 1 favorito por usuário no DB
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  petShopId  String
+  petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  // Snapshot do desconto no momento que favoritou
+  // (mesmo que o pet shop altere o %, o usuário mantém o que foi prometido)
+  descontoSnapshot Float
+
+  favoritadoEm DateTime @default(now())
+
+  @@index([petShopId])
+  @@map("pet_shop_favoritos")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  CUPOM
+//  Criado pelo pet shop; pode ser fixo, sazonal ou favorito
+// ─────────────────────────────────────────────────────────────
+model Cupom {
+  id            String     @id @default(uuid())
+
+  petShopId     String
+  petShop       PetShop    @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  titulo        String                          // ex: "10% em toda loja"
+  descricao     String?    @db.Text             // ex: "Válido para produtos de higiene"
+  codigoDisplay String?                         // ex: "BITZY10" — mostrado na tela
+  iconeTipo     TipoCupomIcone @default(DESCONTO)
+
+  tipo          TipoCupom                       // FIXO | SAZONAL | FAVORITO
+  
+  // Valor do benefício
+  valorDesconto  Float?                         // ex: 10.0 = 10%
+  tipoDesconto   TipoDesconto @default(PERCENTUAL) // PERCENTUAL | FIXO_REAIS
+
+  // ── Validade ──────────────────────────────────────────────
+  // O pet shop escolhe UMA das três opções ao cadastrar:
+  //   ILIMITADO  → dataFim = null, duracaoTipo = ILIMITADO
+  //   24_HORAS   → duracaoTipo = HORAS_24, dataFim preenchido automaticamente
+  //   1_SEMANA   → duracaoTipo = SEMANA_1, dataFim preenchido automaticamente
+  duracaoTipo    DuracaoCupom @default(ILIMITADO)
+  dataInicio     DateTime     @default(now())
+  dataFim        DateTime?                      // null = sem expiração (ILIMITADO)
+
+  // ── Limites de uso ─────────────────────────────────────────
+  limiteUsoTotal    Int?                         // null = sem limite global
+  limiteUsoPorUser  Int      @default(1)         // padrão: 1x por usuário
+
+  // ── Métricas ───────────────────────────────────────────────
+  totalResgates  Int      @default(0)            // atualizado a cada resgate
+
+  ativo          Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  resgates       CupomResgate[]
+
+  @@index([petShopId, ativo])
+  @@index([tipo])
+  @@index([dataFim])                             // facilita query "expira em breve"
+  @@map("cupons")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  CUPOM RESGATE
+//  Registro de cada vez que um usuário resgata/usa um cupom
+//  "alienado ao petshop e ao usuário"
+// ─────────────────────────────────────────────────────────────
+model CupomResgate {
+  id         String        @id @default(uuid())
+
+  cupomId    String
+  cupom      Cupom         @relation(fields: [cupomId], references: [id], onDelete: Cascade)
+
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Status do ciclo de vida do cupom na mão do usuário
+  status     StatusResgate @default(ATIVO)
+
+  // Snapshot dos dados no momento do resgate
+  // (protege histórico mesmo se o cupom for editado)
+  petShopId        String
+  petShopNome      String
+  cupomTitulo      String
+  descontoSnapshot Float?
+  dataFimSnapshot  DateTime?          // cópia da dataFim no momento do resgate
+
+  resgatadoEm      DateTime @default(now())
+  utilizadoEm      DateTime?          // quando apresentou ao atendente
+  expiradoEm       DateTime?          // preenchido por job de expiração
+
+  @@unique([cupomId, userId])         // 1 resgate por cupom por usuário (padrão)
+  @@index([userId, status])
+  @@index([petShopId])
+  @@index([status, dataFimSnapshot])  // job de expiração usa este índice
+  @@map("cupom_resgates")
+}
+
+
+enum TipoCupom {
+  FIXO       // Disponível sempre enquanto ativo (ex: 10% sempre)
+  SAZONAL    // Campanha com data de início e fim (ex: Natal, Black Friday)
+  FAVORITO   // Gerado automaticamente ao favoritar; 1 por petshop por usuário
+}
+
+enum DuracaoCupom {
+  ILIMITADO  // Sem data de expiração
+  HORAS_24   // Expira 24h após o resgate
+  SEMANA_1   // Expira 7 dias após o resgate
+}
+
+enum TipoDesconto {
+  PERCENTUAL   // ex: 10% OFF
+  FIXO_REAIS   // ex: R$15 OFF
+}
+
+enum TipoCupomIcone {
+  DESCONTO     // tag de desconto
+  BANHO_TOSA   // tesoura/banheira
+  PRODUTO      // caixa/produto
+  VIP          // estrela
+  SAZONAL      // calendário/confete
+}
+
+enum StatusResgate {
+  ATIVO        // resgatado, ainda válido, não usado
+  UTILIZADO    // apresentado ao atendente e marcado como usado
+  EXPIRADO     // passou da dataFim sem ser utilizado
+}
 
 enum Especie {
   GATO

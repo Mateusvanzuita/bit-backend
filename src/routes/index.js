@@ -7,6 +7,7 @@ const analiseRoutes = require('./analiseRoutes');
 const termosRoutes = require('./termosRoutes')
 const salvoRoutes = require('./salvoRoutes')
 const sosRoutes = require('./sosRoutes');
+const clubRoutes = require('./clubRoutes');
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use('/analises', analiseRoutes);
 router.use('/termos', termosRoutes);
 router.use('/salvos', salvoRoutes);
 router.use('/sos', sosRoutes);
+router.use('/club', clubRoutes);
 
 module.exports = router;

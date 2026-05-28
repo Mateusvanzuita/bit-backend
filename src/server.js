@@ -1,10 +1,14 @@
 const app = require('./app');
 const config = require('./config/env');
 const prisma = require('./config/database');
+const cron = require('node-cron');
+const expirarCuponsJob = require('./jobs/expirarCupons');
 
 const startServer = async () => {
   await prisma.$connect();
   console.log('✅ Banco de dados conectado');
+  cron.schedule('*/15 * * * *', expirarCuponsJob);
+  console.log('✅ Job de expiração de cupons agendado');
 
   const server = app.listen(config.port, () => {
     console.log(`🚀 Server running on port ${config.port} [${config.nodeEnv}]`);
