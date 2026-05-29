@@ -26,6 +26,11 @@ class ClubController {
     res.status(200).json({ status: 'success', data: { petShop } });
   });
 
+  criarPetShop = asyncHandler(async (req, res) => {
+    const petShop = await clubService.criarPetShop(req.body);
+    res.status(201).json({ status: 'success', data: { petShop } });
+  });
+
   // ── SEGUIR / DEIXAR DE SEGUIR ──────────────────────────────────────────────
 
   // POST /club/petshops/:petShopId/seguir

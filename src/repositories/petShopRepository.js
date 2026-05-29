@@ -7,6 +7,16 @@ class PetShopRepository extends BaseRepository {
     super('petShop');
   }
 
+  async criar(dados) {
+    return await prisma.petShop.create({
+      data: {
+        ...dados,
+        pais: dados.pais || 'BR',
+        planoInicioEm: dados.planoAtivo ? (dados.planoInicioEm || new Date()) : undefined,
+      },
+    });
+  }
+
   // ── Busca por proximidade (GPS) ──────────────────────────────────────────
   // Retorna pet shops ativos/com plano dentro de ~raioKm km
   // Filtra por cidade como fallback se não houver coords

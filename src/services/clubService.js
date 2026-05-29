@@ -97,6 +97,28 @@ class ClubService {
     };
   }
 
+  async criarPetShop(dados) {
+    const existente = await prisma.petShop.findFirst({
+      where: {
+        nome: { equals: dados.nome, mode: 'insensitive' },
+        cidade: { equals: dados.cidade, mode: 'insensitive' },
+        estado: dados.estado.toUpperCase(),
+      },
+    });
+ 
+    if (existente) {
+      throw new AppError(
+        'Já existe um pet shop com este nome nesta cidade',
+        409,
+      );
+    }
+ 
+    return await petShopRepository.criar({
+      ...dados,
+      estado: dados.estado.toUpperCase(),
+    });
+  }
+
   // ── SEGUIR / DEIXAR DE SEGUIR ──────────────────────────────────────────────
 
   async seguirPetShop(userId, petShopId) {

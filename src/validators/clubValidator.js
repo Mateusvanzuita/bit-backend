@@ -171,6 +171,66 @@ const atualizarCupomValidator = [
     .isInt({ min: 1 }),
 ];
 
+const criarPetShopValidator = [
+  body('nome')
+    .notEmpty().withMessage('Nome é obrigatório')
+    .isString().trim()
+    .isLength({ min: 2, max: 100 }).withMessage('Nome deve ter entre 2 e 100 caracteres'),
+ 
+  body('descricao')
+    .optional()
+    .isString().trim()
+    .isLength({ max: 1000 }).withMessage('Descrição deve ter no máximo 1000 caracteres'),
+ 
+  body('endereco')
+    .notEmpty().withMessage('Endereço é obrigatório')
+    .isString().trim()
+    .isLength({ min: 5, max: 200 }),
+ 
+  body('cidade')
+    .notEmpty().withMessage('Cidade é obrigatória')
+    .isString().trim()
+    .isLength({ min: 2, max: 100 }),
+ 
+  body('estado')
+    .notEmpty().withMessage('Estado é obrigatório')
+    .isString().trim()
+    .isLength({ min: 2, max: 2 }).withMessage('Estado deve ser a sigla de 2 letras (ex: SC)'),
+ 
+  body('latitude')
+    .notEmpty().withMessage('Latitude é obrigatória')
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude inválida'),
+ 
+  body('longitude')
+    .notEmpty().withMessage('Longitude é obrigatória')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
+ 
+  body('telefone')
+    .optional().isString().trim().isLength({ max: 20 }),
+ 
+  body('whatsapp')
+    .optional().isString().trim().isLength({ max: 20 }),
+ 
+  body('instagram')
+    .optional().isString().trim().isLength({ max: 100 }),
+ 
+  body('website')
+    .optional().isURL().withMessage('Website deve ser uma URL válida'),
+ 
+  body('descontoFavorito')
+    .optional()
+    .isFloat({ min: 5, max: 100 }).withMessage('Desconto favorito deve ser entre 5% e 100%'),
+ 
+  body('planoAtivo')
+    .optional().isBoolean().withMessage('planoAtivo deve ser true ou false'),
+ 
+  body('logoUrl')
+    .optional().isURL().withMessage('logoUrl deve ser uma URL válida'),
+ 
+  body('bannerUrl')
+    .optional().isURL().withMessage('bannerUrl deve ser uma URL válida'),
+];
+
 module.exports = {
   listarPetShopsValidator,
   petShopIdValidator,
@@ -179,4 +239,5 @@ module.exports = {
   utilizarCupomValidator,
   criarCupomValidator,
   atualizarCupomValidator,
+  criarPetShopValidator
 };

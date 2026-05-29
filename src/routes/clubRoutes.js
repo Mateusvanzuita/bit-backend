@@ -11,6 +11,7 @@ const {
   utilizarCupomValidator,
   criarCupomValidator,
   atualizarCupomValidator,
+  criarPetShopValidator
 } = require('../validators/clubValidator');
 
 const router = express.Router();
@@ -26,6 +27,13 @@ router.get(
   listarPetShopsValidator,
   validate,
   clubController.listarPetShops,
+);
+
+router.post(
+  '/petshops',
+  criarPetShopValidator,
+  validate,
+  clubController.criarPetShop,
 );
 
 // Detalhes de um pet shop + seus cupons ativos
