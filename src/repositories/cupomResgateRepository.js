@@ -7,19 +7,17 @@ class CupomResgateRepository extends BaseRepository {
     super('cupomResgate');
   }
 
-  // Verifica se o usuário já resgatou este cupom
   async findByUserAndCupom(userId, cupomId) {
     return await prisma.cupomResgate.findUnique({
       where: { cupomId_userId: { cupomId, userId } },
     });
   }
 
-  // Todos os resgates ativos do usuário (carteira de cupons)
   async findCarteiraUsuario(userId) {
     return await prisma.cupomResgate.findMany({
       where: { userId },
       orderBy: [
-        { status: 'asc' },        // ATIVO primeiro
+        { status: 'asc' },
         { resgatadoEm: 'desc' },
       ],
       include: {
@@ -38,9 +36,7 @@ class CupomResgateRepository extends BaseRepository {
     });
   }
 
-  // Métricas do pet shop: resgates agrupados por mês
   async metricasPorPetShop(petShopId) {
-    // Contagem total e por cupom
     const porCupom = await prisma.cupomResgate.groupBy({
       by: ['cupomId'],
       where: { petShopId },
@@ -48,7 +44,6 @@ class CupomResgateRepository extends BaseRepository {
       orderBy: { _count: { id: 'desc' } },
     });
 
-    // Contagem do mês corrente
     const inicioMes = new Date();
     inicioMes.setDate(1);
     inicioMes.setHours(0, 0, 0, 0);
@@ -67,7 +62,6 @@ class CupomResgateRepository extends BaseRepository {
     return { porCupom, totalMes, totalGeral };
   }
 
-  // Job de expiração: marca como EXPIRADO resgates vencidos
   async expirarVencidos() {
     const agora = new Date();
     return await prisma.cupomResgate.updateMany({
@@ -79,6 +73,36 @@ class CupomResgateRepository extends BaseRepository {
         status: 'EXPIRADO',
         expiradoEm: agora,
       },
+    });
+  }
+
+  // Busca resgates ativos que vencem dentro de um intervalo de tempo
+  // e ainda não receberam o aviso daquele nível
+  async findVencendoEm({ de, ate, nivel }) {
+    return await prisma.cupomResgate.findMany({
+      where: {
+        status: 'ATIVO',
+        avisoEnviado: { not: nivel },
+        dataFimSnapshot: {
+          gte: de,
+          lte: ate,
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        cupomTitulo: true,
+        dataFimSnapshot: true,
+        descontoSnapshot: true,
+      },
+    });
+  }
+
+  // Marca o nível de aviso enviado
+  async marcarAvisoEnviado(id, nivel) {
+    return await prisma.cupomResgate.update({
+      where: { id },
+      data: { avisoEnviado: nivel },
     });
   }
 }

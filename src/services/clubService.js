@@ -3,11 +3,11 @@ const prisma = require('../config/database');
 const petShopRepository = require('../repositories/petShopRepository');
 const cupomRepository = require('../repositories/cupomRepository');
 const cupomResgateRepository = require('../repositories/cupomResgateRepository');
+const notificationService = require('./notificationService');
 const { AppError } = require('../middlewares/errorHandler');
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Calcula distância em km entre dois pontos (Haversine)
 function calcDistanciaKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -20,50 +20,31 @@ function calcDistanciaKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Calcula dataFim com base no duracaoTipo
 function calcularDataFim(duracaoTipo, dataInicio = new Date()) {
   switch (duracaoTipo) {
-    // PERMANENTE — sem expiração
     case 'PERMANENTE':
       return null;
- 
-    // MENSAL — fim do mês corrente (último segundo do último dia)
     case 'MENSAL': {
       const fim = new Date(dataInicio);
       fim.setMonth(fim.getMonth() + 1);
-      fim.setDate(0);          // último dia do mês atual
+      fim.setDate(0);
       fim.setHours(23, 59, 59, 999);
       return fim;
     }
- 
-    // SEMANAL — 7 dias a partir do início
     case 'SEMANAL':
       return new Date(dataInicio.getTime() + 7 * 24 * 60 * 60 * 1000);
- 
-    // FLASH — 24 horas (mantém compatibilidade com HORAS_24 antigo)
     case 'FLASH':
     case 'HORAS_24':
       return new Date(dataInicio.getTime() + 24 * 60 * 60 * 1000);
- 
-    // HAPPY_HOUR — dataFim = hoje com o horário de fim
-    // O backend só valida se está dentro do horário via happyHourInicio/Fim
-    // dataFim aqui é o fim do dia para não expirar fora do horário
     case 'HAPPY_HOUR': {
       const fim = new Date(dataInicio);
       fim.setHours(23, 59, 59, 999);
       return fim;
     }
- 
-    // SAZONAL — dataFim é fornecida explicitamente pelo admin no body
-    // Retorna null aqui; o service usa o valor do body se existir
     case 'SAZONAL':
-      return null; // será sobrescrito por dados.dataFim no criarCupom
- 
-    // SEMANA_1 — mantém compatibilidade com schema v1
+      return null;
     case 'SEMANA_1':
       return new Date(dataInicio.getTime() + 7 * 24 * 60 * 60 * 1000);
- 
-    // ILIMITADO — mantém compatibilidade com schema v1
     case 'ILIMITADO':
     default:
       return null;
@@ -85,7 +66,6 @@ class ClubService {
       raioKm: raioKm || 30,
     });
 
-    // Adiciona distância real e status de seguidor/favorito do usuário
     const [seguidores, favorito] = await Promise.all([
       prisma.petShopSeguidor.findMany({
         where: { userId },
@@ -142,14 +122,11 @@ class ClubService {
         estado: dados.estado.toUpperCase(),
       },
     });
- 
+
     if (existente) {
-      throw new AppError(
-        'Já existe um pet shop com este nome nesta cidade',
-        409,
-      );
+      throw new AppError('Já existe um pet shop com este nome nesta cidade', 409);
     }
- 
+
     return await petShopRepository.criar({
       ...dados,
       estado: dados.estado.toUpperCase(),
@@ -163,7 +140,6 @@ class ClubService {
     if (!petShop || !petShop.ativo || !petShop.planoAtivo)
       throw new AppError('Pet shop não encontrado no Bitzy Club', 404);
 
-    // upsert — idempotente
     await prisma.petShopSeguidor.upsert({
       where: { userId_petShopId: { userId, petShopId } },
       create: { userId, petShopId },
@@ -178,7 +154,6 @@ class ClubService {
       where: { userId, petShopId },
     });
 
-    // Se era o favorito, remove também
     const favorito = await prisma.petShopFavorito.findUnique({
       where: { userId },
     });
@@ -190,15 +165,12 @@ class ClubService {
   }
 
   // ── FAVORITAR PET SHOP ────────────────────────────────────────────────────
-  // Regra: apenas 1 favorito por usuário
-  // Favoritar garante o cupom permanente de descontoFavorito%
 
   async favoritarPetShop(userId, petShopId) {
     const petShop = await petShopRepository.findById(petShopId);
     if (!petShop || !petShop.ativo || !petShop.planoAtivo)
       throw new AppError('Pet shop não encontrado no Bitzy Club', 404);
 
-    // Verifica se já tem favorito e é diferente
     const favoritoAtual = await prisma.petShopFavorito.findUnique({
       where: { userId },
     });
@@ -206,13 +178,9 @@ class ClubService {
     if (favoritoAtual?.petShopId === petShopId)
       throw new AppError('Este pet shop já é o seu favorito', 409);
 
-    // Transação: substitui favorito anterior + garante que segue + cria/atualiza cupom FAVORITO
     await prisma.$transaction(async (tx) => {
-      // 1. Remove favorito anterior (se existir) e o cupom FAVORITO antigo
       if (favoritoAtual) {
         await tx.petShopFavorito.delete({ where: { userId } });
-
-        // Desativa o cupom FAVORITO do pet shop anterior para este usuário
         await tx.cupomResgate.updateMany({
           where: {
             userId,
@@ -224,7 +192,6 @@ class ClubService {
         });
       }
 
-      // 2. Cria novo favorito com snapshot do desconto
       await tx.petShopFavorito.create({
         data: {
           userId,
@@ -233,20 +200,17 @@ class ClubService {
         },
       });
 
-      // 3. Garante que o usuário segue o pet shop
       await tx.petShopSeguidor.upsert({
         where: { userId_petShopId: { userId, petShopId } },
         create: { userId, petShopId },
         update: {},
       });
 
-      // 4. Busca ou cria o cupom FAVORITO do pet shop
       let cupomFavorito = await tx.cupom.findFirst({
         where: { petShopId, tipo: 'FAVORITO', ativo: true },
       });
 
       if (!cupomFavorito) {
-        // Pet shop ainda não criou cupom favorito — criamos padrão
         cupomFavorito = await tx.cupom.create({
           data: {
             petShopId,
@@ -255,13 +219,12 @@ class ClubService {
             tipo: 'FAVORITO',
             valorDesconto: petShop.descontoFavorito,
             tipoBeneficio: 'DESCONTO_PERCENTUAL',
-            duracaoTipo: 'PERMANENTE',           
+            duracaoTipo: 'PERMANENTE',
             iconeTipo: 'VIP',
           },
         });
       }
 
-      // 5. Cria o resgate permanente deste cupom para o usuário
       await tx.cupomResgate.upsert({
         where: { cupomId_userId: { cupomId: cupomFavorito.id, userId } },
         create: {
@@ -272,10 +235,18 @@ class ClubService {
           petShopNome: petShop.nome,
           cupomTitulo: cupomFavorito.titulo,
           descontoSnapshot: petShop.descontoFavorito,
-          dataFimSnapshot: null, // permanente
+          dataFimSnapshot: null,
         },
         update: { status: 'ATIVO', expiradoEm: null },
       });
+    });
+
+    // ── Notificação: favorito confirmado ──────────────────────────────────
+    await notificationService.notificar(userId, {
+      titulo: `${petShop.nome} é seu favorito! ⭐`,
+      mensagem: `Você ganhou ${petShop.descontoFavorito}% de desconto exclusivo em todas as compras.`,
+      tipo: 'SISTEMA',
+      pathKey: `/club/petshops/${petShopId}`,
     });
 
     return {
@@ -293,8 +264,6 @@ class ClubService {
 
     await prisma.$transaction(async (tx) => {
       await tx.petShopFavorito.delete({ where: { userId } });
-
-      // Expira o cupom FAVORITO ativo
       await tx.cupomResgate.updateMany({
         where: {
           userId,
@@ -312,7 +281,6 @@ class ClubService {
   // ── CUPONS ────────────────────────────────────────────────────────────────
 
   async listarCuponsDisponiveis(userId, { latitude, longitude, cidade, estado }) {
-    // Todos os pet shops próximos
     const petShops = await petShopRepository.findNearby({
       latitude,
       longitude,
@@ -328,7 +296,7 @@ class ClubService {
       where: {
         petShopId: { in: petShopIds },
         ativo: true,
-        tipo: { not: 'FAVORITO' }, // cupons favorito ficam na carteira, não no feed geral
+        tipo: { not: 'FAVORITO' },
         OR: [{ dataFim: null }, { dataFim: { gt: agora } }],
       },
       include: {
@@ -339,7 +307,6 @@ class ClubService {
       orderBy: [{ dataFim: 'asc' }, { createdAt: 'desc' }],
     });
 
-    // Status de resgate por usuário
     const ids = cupons.map((c) => c.id);
     const resgates = await prisma.cupomResgate.findMany({
       where: { cupomId: { in: ids }, userId },
@@ -347,7 +314,6 @@ class ClubService {
     });
     const resgateMap = Object.fromEntries(resgates.map((r) => [r.cupomId, r]));
 
-    // Mapeia distância do pet shop
     const distMap = Object.fromEntries(
       petShops.map((ps) => [
         ps.id,
@@ -379,7 +345,6 @@ class ClubService {
     if (cupom.limiteUsoTotal && cupom.totalResgates >= cupom.limiteUsoTotal)
       throw new AppError('Este cupom atingiu o limite de resgates', 409);
 
-    // Verifica se o usuário já resgatou
     const resgateExistente = await cupomResgateRepository.findByUserAndCupom(userId, cupomId);
     if (resgateExistente) {
       if (resgateExistente.status === 'ATIVO')
@@ -388,7 +353,6 @@ class ClubService {
         throw new AppError('Você já utilizou este cupom', 409);
     }
 
-    // Calcula dataFim do resgate baseado no duracaoTipo
     const dataFimResgate = calcularDataFim(cupom.duracaoTipo, agora);
 
     let resgate;
@@ -408,11 +372,18 @@ class ClubService {
         },
       });
 
-      // Incrementa contador
       await tx.cupom.update({
         where: { id: cupomId },
         data: { totalResgates: { increment: 1 } },
       });
+    });
+
+    // ── Notificação: cupom resgatado ──────────────────────────────────────
+    await notificationService.notificar(userId, {
+      titulo: 'Cupom resgatado! 🎉',
+      mensagem: `Seu cupom "${cupom.titulo}" está na sua carteira.`,
+      tipo: 'SISTEMA',
+      pathKey: '/club/carteira',
     });
 
     return resgate;
@@ -433,7 +404,6 @@ class ClubService {
         409,
       );
 
-    // Verifica expiração
     if (resgate.dataFimSnapshot && resgate.dataFimSnapshot < new Date())
       throw new AppError('Este cupom expirou', 410);
 
@@ -443,54 +413,73 @@ class ClubService {
     });
   }
 
-  // ── CARTEIRA DE CUPONS DO USUÁRIO ─────────────────────────────────────────
+  // ── CARTEIRA ──────────────────────────────────────────────────────────────
 
   async carteiraCupons(userId) {
     return await cupomResgateRepository.findCarteiraUsuario(userId);
   }
 
-  // ── CRIAR CUPOM (admin / pet shop) ───────────────────────────────────────
+  // ── CRIAR CUPOM ───────────────────────────────────────────────────────────
 
   async criarCupom(petShopId, dados) {
-  const petShop = await petShopRepository.findById(petShopId);
-  if (!petShop) throw new AppError('Pet shop não encontrado', 404);
-  if (!petShop.planoAtivo)
-    throw new AppError('Plano Bitzy Club inativo para este pet shop', 403);
- 
-  // ── Valida limite de cupons ativos ─────────────────────────
-  const totalAtivos = await prisma.cupom.count({
-    where: { petShopId, ativo: true },
-  });
- 
-  const limite = petShop.limiteCuponsAtivos ?? 10;
-  if (totalAtivos >= limite) {
-    throw new AppError(
-      `Este pet shop já atingiu o limite de ${limite} cupons ativos. Desative um cupom antes de criar outro.`,
-      409,
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    if (!petShop.planoAtivo)
+      throw new AppError('Plano Bitzy Club inativo para este pet shop', 403);
+
+    const totalAtivos = await prisma.cupom.count({
+      where: { petShopId, ativo: true },
+    });
+
+    const limite = petShop.limiteCuponsAtivos ?? 10;
+    if (totalAtivos >= limite) {
+      throw new AppError(
+        `Este pet shop já atingiu o limite de ${limite} cupons ativos. Desative um cupom antes de criar outro.`,
+        409,
+      );
+    }
+
+    const { duracaoTipo, dataFim: dataFimManual, ...resto } = dados;
+    const tipo = duracaoTipo || 'PERMANENTE';
+
+    let dataFim;
+    if (tipo === 'SAZONAL' && dataFimManual) {
+      dataFim = new Date(dataFimManual);
+    } else {
+      dataFim = calcularDataFim(tipo);
+    }
+
+    const cupom = await prisma.cupom.create({
+      data: {
+        petShopId,
+        duracaoTipo: tipo,
+        dataFim,
+        ...resto,
+      },
+    });
+
+    // ── Notificação: novo cupom para todos os seguidores ──────────────────
+    // Busca seguidores do pet shop e notifica em paralelo (best-effort)
+    const seguidores = await prisma.petShopSeguidor.findMany({
+      where: { petShopId },
+      select: { userId: true },
+    });
+
+    await Promise.allSettled(
+      seguidores.map((s) =>
+        notificationService.notificar(s.userId, {
+          titulo: `Novo benefício em ${petShop.nome}! 🚀`,
+          mensagem: cupom.descricao
+            ? `${cupom.titulo} — ${cupom.descricao}`
+            : cupom.titulo,
+          tipo: 'SISTEMA',
+          pathKey: `/club/petshops/${petShopId}`,
+        }),
+      ),
     );
+
+    return cupom;
   }
- 
-  // ── Calcula dataFim com base no duracaoTipo ────────────────
-  const { duracaoTipo, dataFim: dataFimManual, ...resto } = dados;
-  const tipo = duracaoTipo || 'PERMANENTE';
- 
-  let dataFim;
-  if (tipo === 'SAZONAL' && dataFimManual) {
-    // SAZONAL: admin informa dataFim explicitamente
-    dataFim = new Date(dataFimManual);
-  } else {
-    dataFim = calcularDataFim(tipo);
-  }
- 
-  return await prisma.cupom.create({
-    data: {
-      petShopId,
-      duracaoTipo: tipo,
-      dataFim,
-      ...resto,
-    },
-  });
-}
 
   async atualizarCupom(cupomId, petShopId, dados) {
     const cupom = await prisma.cupom.findUnique({ where: { id: cupomId } });
@@ -514,7 +503,7 @@ class ClubService {
     });
   }
 
-  // ── MÉTRICAS DO PET SHOP ──────────────────────────────────────────────────
+  // ── MÉTRICAS ──────────────────────────────────────────────────────────────
 
   async metricasPetShop(petShopId) {
     const petShop = await petShopRepository.findById(petShopId);
