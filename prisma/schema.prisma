@@ -655,7 +655,7 @@ model CupomResgate {
   tipoBeneficioSnapshot TipoBeneficio?
   dataFimSnapshot     DateTime?
 
-  avisoEnviado           String? // null | '48h' | '24h' | '4h'
+  avisoEnviado  String?  @map("aviso_enviado") // null | '48h' | '24h' | '4h'
 
   resgatadoEm   DateTime @default(now())
   utilizadoEm   DateTime?
