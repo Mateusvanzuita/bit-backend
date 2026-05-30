@@ -105,6 +105,30 @@ class CupomResgateRepository extends BaseRepository {
       data: { avisoEnviado: nivel },
     });
   }
+
+  async findClientesSumidos(diasSemUso = 30) {
+      const agora = new Date();
+      const limiteInicio = new Date(agora.getTime() - (diasSemUso + 1) * 24 * 60 * 60 * 1000);
+      const limiteFim   = new Date(agora.getTime() - diasSemUso * 24 * 60 * 60 * 1000);
+
+      // Usuários cujo ÚLTIMO uso está entre 30 e 31 dias atrás
+      // Garante que o job diário só pega cada usuário uma vez (na janela exata de 30 dias)
+      const resultado = await prisma.$queryRaw`
+        SELECT
+          cr."userId",
+          MAX(cr."utilizadoEm") AS "ultimoUso"
+        FROM cupom_resgates cr
+        WHERE
+          cr.status = 'UTILIZADO'
+          AND cr."utilizadoEm" IS NOT NULL
+        GROUP BY cr."userId"
+        HAVING
+          MAX(cr."utilizadoEm") >= ${limiteInicio}
+          AND MAX(cr."utilizadoEm") <  ${limiteFim}
+      `;
+
+      return resultado;
+    }
 }
 
 module.exports = new CupomResgateRepository();

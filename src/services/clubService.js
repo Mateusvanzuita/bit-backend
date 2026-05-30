@@ -386,7 +386,7 @@ class ClubService {
       titulo: 'Cupom resgatado! 🎉',
       mensagem: `Seu cupom "${cupom.titulo}" está na sua carteira.`,
       tipo: 'SISTEMA',
-      pathKey: '/club/carteira',
+      pathKey: '/clube',
     });
 
     return resgate;

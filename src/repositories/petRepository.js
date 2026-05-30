@@ -41,6 +41,23 @@ class PetRepository extends BaseRepository {
     orderBy: { createdAt: 'desc' }
   });
 }
+
+async findAniversariantes() {
+    return await prisma.$queryRaw`
+      SELECT
+        p.id,
+        p.nome,
+        p."userId",
+        p."dataNascimento",
+        p.especie,
+        EXTRACT(YEAR FROM AGE(NOW(), p."dataNascimento"))::int AS anos
+      FROM pets p
+      WHERE
+        p."dataNascimento" IS NOT NULL
+        AND EXTRACT(MONTH FROM p."dataNascimento") = EXTRACT(MONTH FROM NOW())
+        AND EXTRACT(DAY   FROM p."dataNascimento") = EXTRACT(DAY   FROM NOW())
+    `;
+  }
 }
 
 module.exports = new PetRepository();

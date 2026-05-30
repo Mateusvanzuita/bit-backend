@@ -50,7 +50,7 @@ const expirarCuponsJob = async () => {
           titulo: 'Cupom vencendo em breve ⏳',
           mensagem: mensagem(resgate.cupomTitulo),
           tipo: 'LEMBRETE',
-          pathKey: '/club/carteira',
+          pathKey: '/clube',
         });
 
         await cupomResgateRepository.marcarAvisoEnviado(resgate.id, nivel);
