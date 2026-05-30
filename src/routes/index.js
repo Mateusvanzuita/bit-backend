@@ -8,6 +8,7 @@ const termosRoutes = require('./termosRoutes')
 const salvoRoutes = require('./salvoRoutes')
 const sosRoutes = require('./sosRoutes');
 const clubRoutes = require('./clubRoutes');
+const notificationRoutes = require('./notificationRoutes');
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use('/termos', termosRoutes);
 router.use('/salvos', salvoRoutes);
 router.use('/sos', sosRoutes);
 router.use('/club', clubRoutes);
+router.use('/notificacoes', notificationRoutes);
 
 module.exports = router;

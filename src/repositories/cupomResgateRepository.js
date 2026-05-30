@@ -30,7 +30,7 @@ class CupomResgateRepository extends BaseRepository {
             descricao: true,
             iconeTipo: true,
             valorDesconto: true,
-            tipoDesconto: true,
+            tipoBeneficio: true,
             tipo: true,
           },
         },

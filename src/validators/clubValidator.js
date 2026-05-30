@@ -4,30 +4,11 @@ const { body, query, param } = require('express-validator');
 // ── PET SHOPS ──────────────────────────────────────────────────────────────
 
 const listarPetShopsValidator = [
-  query('latitude')
-    .optional()
-    .isFloat({ min: -90, max: 90 })
-    .withMessage('Latitude inválida'),
-  query('longitude')
-    .optional()
-    .isFloat({ min: -180, max: 180 })
-    .withMessage('Longitude inválida'),
-  query('raioKm')
-    .optional()
-    .isFloat({ min: 1, max: 200 })
-    .withMessage('Raio deve ser entre 1 e 200 km'),
-  query('cidade')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Nome de cidade inválido'),
-  query('estado')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 2, max: 2 })
-    .withMessage('Estado deve ser a sigla de 2 letras (ex: SC)'),
+  query('latitude').optional().isFloat({ min: -90, max: 90 }).withMessage('Latitude inválida'),
+  query('longitude').optional().isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
+  query('raioKm').optional().isFloat({ min: 1, max: 200 }).withMessage('Raio deve ser entre 1 e 200 km'),
+  query('cidade').optional().isString().trim().isLength({ min: 2, max: 100 }),
+  query('estado').optional().isString().trim().isLength({ min: 2, max: 2 }),
 ];
 
 const petShopIdValidator = [
@@ -37,138 +18,152 @@ const petShopIdValidator = [
 ];
 
 // ── CUPONS ────────────────────────────────────────────────────────────────
-
+ 
 const listarCuponsValidator = [
-  query('latitude')
+  query('latitude').optional().isFloat({ min: -90, max: 90 }),
+  query('longitude').optional().isFloat({ min: -180, max: 180 }),
+  query('cidade').optional().isString().trim().isLength({ min: 2, max: 100 }),
+  query('estado').optional().isString().trim().isLength({ min: 2, max: 2 }),
+  query('categoria')
     .optional()
-    .isFloat({ min: -90, max: 90 })
-    .withMessage('Latitude inválida'),
-  query('longitude')
-    .optional()
-    .isFloat({ min: -180, max: 180 })
-    .withMessage('Longitude inválida'),
-  query('cidade')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 2, max: 100 }),
-  query('estado')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 2, max: 2 }),
+    .isIn(['SERVICOS', 'ALIMENTACAO', 'SAUDE', 'ACESSORIOS', 'GATO', 'OUTROS'])
+    .withMessage('Categoria inválida'),
 ];
 
 const resgatarCupomValidator = [
-  param('cupomId')
-    .isUUID()
-    .withMessage('ID do cupom inválido'),
+  param('cupomId').isUUID().withMessage('ID do cupom inválido'),
 ];
-
+ 
 const utilizarCupomValidator = [
-  param('resgateId')
-    .isUUID()
-    .withMessage('ID do resgate inválido'),
+  param('resgateId').isUUID().withMessage('ID do resgate inválido'),
 ];
-
+ 
 const criarCupomValidator = [
-  param('petShopId')
-    .isUUID()
-    .withMessage('ID do pet shop inválido'),
-
+  param('petShopId').isUUID().withMessage('ID do pet shop inválido'),
+ 
   body('titulo')
     .notEmpty().withMessage('Título é obrigatório')
-    .isString()
-    .trim()
+    .isString().trim()
     .isLength({ min: 3, max: 100 })
     .withMessage('Título deve ter entre 3 e 100 caracteres'),
-
+ 
   body('descricao')
+    .optional().isString().trim()
+    .isLength({ max: 500 }),
+ 
+  body('categoria')
     .optional()
-    .isString()
-    .trim()
-    .isLength({ max: 500 })
-    .withMessage('Descrição deve ter no máximo 500 caracteres'),
-
-  body('tipo')
-    .notEmpty().withMessage('Tipo é obrigatório')
-    .isIn(['FIXO', 'SAZONAL', 'FAVORITO'])
-    .withMessage('Tipo deve ser FIXO, SAZONAL ou FAVORITO'),
-
+    .isIn(['SERVICOS', 'ALIMENTACAO', 'SAUDE', 'ACESSORIOS', 'GATO', 'OUTROS'])
+    .withMessage('Categoria inválida'),
+ 
+  body('subcategoria')
+    .optional().isString().trim()
+    .isLength({ max: 80 })
+    .withMessage('Subcategoria deve ter no máximo 80 caracteres'),
+ 
+  body('tipoBeneficio')
+    .optional()
+    .isIn(['DESCONTO_PERCENTUAL', 'DESCONTO_FIXO', 'BRINDE', 'COMBO'])
+    .withMessage('Tipo de benefício inválido'),
+ 
   body('valorDesconto')
     .optional()
     .isFloat({ min: 0.01 })
     .withMessage('Valor do desconto deve ser maior que 0'),
-
-  body('tipoDesconto')
+ 
+  body('tipo')
     .optional()
-    .isIn(['PERCENTUAL', 'FIXO_REAIS'])
-    .withMessage('Tipo de desconto deve ser PERCENTUAL ou FIXO_REAIS'),
-
-  body('duracaoTipo')
+    .isIn(['FIXO', 'SAZONAL', 'FAVORITO'])
+    .withMessage('Tipo deve ser FIXO, SAZONAL ou FAVORITO'),
+ 
+  body('objetivo')
     .optional()
-    .isIn(['ILIMITADO', 'HORAS_24', 'SEMANA_1'])
-    .withMessage('Duração deve ser ILIMITADO, HORAS_24 ou SEMANA_1'),
-
+    .isIn([
+      'FIDELIZACAO', 'RECUPERACAO', 'AUMENTO_TICKET',
+      'GIRO_ESTOQUE', 'SAZONAL', 'LANCAMENTO', 'AQUISICAO',
+    ])
+    .withMessage('Objetivo inválido'),
+ 
   body('iconeTipo')
     .optional()
-    .isIn(['DESCONTO', 'BANHO_TOSA', 'PRODUTO', 'VIP', 'SAZONAL'])
+    .isIn([
+      'DESCONTO', 'BANHO_TOSA', 'PRODUTO', 'VIP',
+      'SAZONAL', 'SAUDE', 'ALIMENTACAO', 'BRINDE', 'COMBO',
+    ])
     .withMessage('Ícone inválido'),
-
+ 
+  body('duracaoTipo')
+    .optional()
+    .isIn(['PERMANENTE', 'MENSAL', 'SEMANAL', 'FLASH', 'HAPPY_HOUR', 'SAZONAL',
+           'ILIMITADO', 'HORAS_24', 'SEMANA_1']) // mantém compatibilidade v1
+    .withMessage('Duração inválida'),
+ 
+  // SAZONAL: exige dataFim
+  body('dataFim')
+    .optional()
+    .isISO8601()
+    .withMessage('dataFim deve ser uma data ISO válida'),
+ 
+  // HAPPY_HOUR: exige horários no formato HH:MM
+  body('happyHourInicio')
+    .optional()
+    .matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
+    .withMessage('happyHourInicio deve estar no formato HH:MM'),
+ 
+  body('happyHourFim')
+    .optional()
+    .matches(/^([01]\d|2[0-3]):([0-5]\d)$/)
+    .withMessage('happyHourFim deve estar no formato HH:MM'),
+ 
   body('limiteUsoTotal')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Limite de uso total deve ser um inteiro positivo'),
-
+    .optional().isInt({ min: 1 }),
+ 
   body('limiteUsoPorUser')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Limite de uso por usuário deve ser um inteiro positivo'),
-
+    .optional().isInt({ min: 1 }),
+ 
   body('codigoDisplay')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ max: 30 })
-    .withMessage('Código de exibição deve ter no máximo 30 caracteres'),
+    .optional().isString().trim()
+    .isLength({ max: 30 }),
+ 
+  body('bannerUrl')
+    .optional().isURL().withMessage('bannerUrl deve ser uma URL válida'),
+ 
+  body('destaque')
+    .optional().isBoolean().withMessage('destaque deve ser true ou false'),
 ];
-
+ 
 const atualizarCupomValidator = [
   param('petShopId').isUUID().withMessage('ID do pet shop inválido'),
   param('cupomId').isUUID().withMessage('ID do cupom inválido'),
-
-  body('titulo')
+ 
+  body('titulo').optional().isString().trim().isLength({ min: 3, max: 100 }),
+  body('descricao').optional().isString().trim().isLength({ max: 500 }),
+  body('categoria')
     .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 3, max: 100 }),
-
-  body('descricao')
+    .isIn(['SERVICOS', 'ALIMENTACAO', 'SAUDE', 'ACESSORIOS', 'GATO', 'OUTROS']),
+  body('subcategoria').optional().isString().trim().isLength({ max: 80 }),
+  body('tipoBeneficio')
     .optional()
-    .isString()
-    .trim()
-    .isLength({ max: 500 }),
-
-  body('ativo')
+    .isIn(['DESCONTO_PERCENTUAL', 'DESCONTO_FIXO', 'BRINDE', 'COMBO']),
+  body('valorDesconto').optional().isFloat({ min: 0.01 }),
+  body('objetivo')
     .optional()
-    .isBoolean()
-    .withMessage('ativo deve ser true ou false'),
-
-  body('valorDesconto')
-    .optional()
-    .isFloat({ min: 0.01 }),
-
-  body('tipoDesconto')
-    .optional()
-    .isIn(['PERCENTUAL', 'FIXO_REAIS']),
-
+    .isIn([
+      'FIDELIZACAO', 'RECUPERACAO', 'AUMENTO_TICKET',
+      'GIRO_ESTOQUE', 'SAZONAL', 'LANCAMENTO', 'AQUISICAO',
+    ]),
   body('iconeTipo')
     .optional()
-    .isIn(['DESCONTO', 'BANHO_TOSA', 'PRODUTO', 'VIP', 'SAZONAL']),
-
-  body('limiteUsoTotal')
-    .optional()
-    .isInt({ min: 1 }),
+    .isIn([
+      'DESCONTO', 'BANHO_TOSA', 'PRODUTO', 'VIP',
+      'SAZONAL', 'SAUDE', 'ALIMENTACAO', 'BRINDE', 'COMBO',
+    ]),
+  body('ativo').optional().isBoolean(),
+  body('destaque').optional().isBoolean(),
+  body('dataFim').optional().isISO8601(),
+  body('happyHourInicio').optional().matches(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  body('happyHourFim').optional().matches(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  body('bannerUrl').optional().isURL(),
 ];
 
 const criarPetShopValidator = [

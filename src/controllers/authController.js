@@ -47,10 +47,8 @@ class AuthController {
 
   // ─── ESQUECEU A SENHA ──────────────────────────────────────────────────
 
-  // POST /auth/forgot-password — envia o código por email
   forgotPassword = asyncHandler(async (req, res) => {
     const { email } = req.body;
-    // Sempre retorna 200 para não vazar se o email existe
     await authService.sendPasswordResetCode(email.toLowerCase().trim());
     res.status(200).json({
       status: 'success',
@@ -58,7 +56,6 @@ class AuthController {
     });
   });
 
-  // POST /auth/verify-reset-code — valida o código e retorna resetToken
   verifyResetCode = asyncHandler(async (req, res) => {
     const { email, code } = req.body;
     const { resetToken } = await authService.verifyPasswordResetCode(
@@ -68,16 +65,14 @@ class AuthController {
     res.status(200).json({ status: 'success', data: { resetToken } });
   });
 
-  // POST /auth/reset-password — redefine a senha com o resetToken
   resetPassword = asyncHandler(async (req, res) => {
     const { resetToken, newPassword } = req.body;
     await authService.resetPassword(resetToken, newPassword);
     res.status(200).json({ status: 'success', message: 'Senha redefinida com sucesso.' });
   });
 
-  // Adicione este método dentro da classe AuthController no authController.js
+  // ─── LOCALIZAÇÃO ───────────────────────────────────────────────────────
 
-  // PATCH /auth/location — salva localização do usuário
   updateLocation = asyncHandler(async (req, res) => {
     const { latitude, longitude, cidade, estado, pais } = req.body;
     const updatedUser = await authService.updateLocation(req.user.id, {
@@ -88,6 +83,14 @@ class AuthController {
       pais,
     });
     res.status(200).json({ status: 'success', data: { user: updatedUser } });
+  });
+
+  // ─── PUSH TOKEN ────────────────────────────────────────────────────────
+
+  updatePushToken = asyncHandler(async (req, res) => {
+    const { pushToken } = req.body;
+    await authService.updatePushToken(req.user.id, pushToken);
+    res.status(200).json({ status: 'success', message: 'Push token atualizado' });
   });
 }
 

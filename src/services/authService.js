@@ -101,18 +101,14 @@ class AuthService {
   // ─── ESQUECEU A SENHA ────────────────────────────────────────────────────
 
   async sendPasswordResetCode(email) {
-    // Busca o usuário — mas sempre retorna a mesma mensagem para não vazar
-    // se o email existe ou não (proteção contra enumeração)
     const user = await userRepository.findByEmail(email);
-    if (!user) return; // silencioso
+    if (!user) return;
 
-    // Invalida códigos anteriores do mesmo email
     await prisma.passwordResetCode.updateMany({
       where: { email, used: false },
       data: { used: true },
     });
 
-    // Gera código de 6 dígitos
     const code = crypto.randomInt(100000, 999999).toString();
     const hashedCode = await bcrypt.hash(code, 10);
 
@@ -120,7 +116,7 @@ class AuthService {
       data: {
         email,
         code: hashedCode,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutos
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
     });
 
@@ -128,7 +124,6 @@ class AuthService {
   }
 
   async verifyPasswordResetCode(email, code) {
-    // Busca o código mais recente não utilizado para este email
     const record = await prisma.passwordResetCode.findFirst({
       where: { email, used: false },
       orderBy: { createdAt: 'desc' },
@@ -140,15 +135,11 @@ class AuthService {
     const isValid = await bcrypt.compare(code, record.code);
     if (!isValid) throw new AppError('Código incorreto. Verifique e tente novamente.', 400);
 
-    // Marca como usado imediatamente para evitar reuso
     await prisma.passwordResetCode.update({
       where: { id: record.id },
       data: { used: true },
     });
 
-    // Gera um token temporário de reset (válido por 10 minutos)
-    // Usamos um token simples assinado com o id do record para evitar
-    // que qualquer outro email use este token
     const resetToken = generateToken(
       { id: record.id, email, type: 'password_reset' },
       '10m',
@@ -175,7 +166,8 @@ class AuthService {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await userRepository.update(user.id, { senha: hashedPassword });
   }
-// Adicione este método dentro da classe AuthService no authService.js
+
+  // ─── LOCALIZAÇÃO ─────────────────────────────────────────────────────────
 
   async updateLocation(userId, locationData) {
     const { latitude, longitude, cidade, estado, pais } = locationData;
@@ -188,6 +180,12 @@ class AuthService {
     if (pais !== undefined) data.pais = pais;
 
     return await userRepository.update(userId, data);
+  }
+
+  // ─── PUSH TOKEN ───────────────────────────────────────────────────────────
+
+  async updatePushToken(userId, pushToken) {
+    await userRepository.update(userId, { pushToken });
   }
 }
 

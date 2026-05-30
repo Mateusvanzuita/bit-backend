@@ -34,6 +34,7 @@ model User {
   petShopsSeguidores  PetShopSeguidor[]
   petShopFavorito     PetShopFavorito?
   cupomResgates       CupomResgate[]
+  pushToken           String?
 
   latitude   Float?
   longitude  Float?
@@ -486,18 +487,19 @@ model PetShop {
 
   // Plano Bitzy Club
   ativo         Boolean  @default(true)
-  planoAtivo    Boolean  @default(false)   // true = pagou R$99/mês
+  planoAtivo    Boolean  @default(false)
   planoInicioEm DateTime?
-  planoFimEm    DateTime?                  // null = recorrente ativo
+  planoFimEm    DateTime?
 
-  // Desconto fixo para quem FAVORITA este pet shop
-  // O pet shop escolhe o %, mínimo 5%, padrão 10%
-  descontoFavorito Float  @default(10.0)   // ex: 10.0 = 10%
+  // Desconto fixo para quem FAVORITA (pet shop escolhe o %, mínimo 5%)
+  descontoFavorito Float @default(10.0)
+
+  // Limite de cupons ativos por mês (padrão MVP = 10)
+  limiteCuponsAtivos Int @default(10)
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Relacionamentos
   cupons        Cupom[]
   seguidores    PetShopSeguidor[]
   favoritos     PetShopFavorito[]
@@ -524,7 +526,7 @@ model PetShopSeguidor {
 
   createdAt  DateTime @default(now())
 
-  @@unique([userId, petShopId])   // um usuário segue um pet shop apenas 1 vez
+  @@unique([userId, petShopId])
   @@index([userId])
   @@map("pet_shop_seguidores")
 }
@@ -537,14 +539,12 @@ model PetShopSeguidor {
 model PetShopFavorito {
   id         String   @id @default(uuid())
 
-  userId     String   @unique   // garante 1 favorito por usuário no DB
+  userId     String   @unique
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   petShopId  String
   petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
 
-  // Snapshot do desconto no momento que favoritou
-  // (mesmo que o pet shop altere o %, o usuário mantém o que foi prometido)
   descontoSnapshot Float
 
   favoritadoEm DateTime @default(now())
@@ -559,39 +559,62 @@ model PetShopFavorito {
 //  Criado pelo pet shop; pode ser fixo, sazonal ou favorito
 // ─────────────────────────────────────────────────────────────
 model Cupom {
-  id            String     @id @default(uuid())
+  id            String   @id @default(uuid())
 
   petShopId     String
-  petShop       PetShop    @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+  petShop       PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
 
-  titulo        String                          // ex: "10% em toda loja"
-  descricao     String?    @db.Text             // ex: "Válido para produtos de higiene"
-  codigoDisplay String?                         // ex: "BITZY10" — mostrado na tela
-  iconeTipo     TipoCupomIcone @default(DESCONTO)
+  // ── Identidade ────────────────────────────────────────────
+  // Nome da promoção (ex: "Banho Premiado", "Semana da Ração")
+  titulo        String
+  descricao     String?  @db.Text
+  codigoDisplay String?              // ex: "BITZY10" — mostrado na tela
+  bannerUrl     String?              // foto/arte do cupom (opcional)
 
-  tipo          TipoCupom                       // FIXO | SAZONAL | FAVORITO
-  
-  // Valor do benefício
-  valorDesconto  Float?                         // ex: 10.0 = 10%
-  tipoDesconto   TipoDesconto @default(PERCENTUAL) // PERCENTUAL | FIXO_REAIS
+  // ── Categorização ─────────────────────────────────────────
+  // Categoria principal (usada para ícone e filtro no app)
+  categoria     CategoriaCupom   @default(OUTROS)
 
-  // ── Validade ──────────────────────────────────────────────
-  // O pet shop escolhe UMA das três opções ao cadastrar:
-  //   ILIMITADO  → dataFim = null, duracaoTipo = ILIMITADO
-  //   24_HORAS   → duracaoTipo = HORAS_24, dataFim preenchido automaticamente
-  //   1_SEMANA   → duracaoTipo = SEMANA_1, dataFim preenchido automaticamente
-  duracaoTipo    DuracaoCupom @default(ILIMITADO)
-  dataInicio     DateTime     @default(now())
-  dataFim        DateTime?                      // null = sem expiração (ILIMITADO)
+  // Subcategoria livre (ex: "Banho + Tosa", "Ração Premium", "Bravecto")
+  // Preenchida pelo admin no cadastro; exibida como detalhe no card
+  subcategoria  String?
 
-  // ── Limites de uso ─────────────────────────────────────────
-  limiteUsoTotal    Int?                         // null = sem limite global
-  limiteUsoPorUser  Int      @default(1)         // padrão: 1x por usuário
+  // ── Tipo do benefício ─────────────────────────────────────
+  tipoBeneficio TipoBeneficio    @default(DESCONTO_PERCENTUAL)
 
-  // ── Métricas ───────────────────────────────────────────────
-  totalResgates  Int      @default(0)            // atualizado a cada resgate
+  // Valor numérico — usado quando tipoBeneficio é DESCONTO_PERCENTUAL ou DESCONTO_FIXO
+  // Para BRINDE e COMBO, deixar null e descrever no campo `descricao`
+  valorDesconto Float?
 
+  // ── Tipo interno (para lógica de negócio) ─────────────────
+  // FIXO = permanente/recorrente | SAZONAL = campanha com datas | FAVORITO = gerado ao favoritar
+  tipo          TipoCupom        @default(FIXO)
+
+  // ── Objetivo estratégico (para métricas e relatórios) ─────
+  objetivo      ObjetivoCupom    @default(FIDELIZACAO)
+
+  // ── Ícone visual no card ──────────────────────────────────
+  iconeTipo     TipoCupomIcone   @default(DESCONTO)
+
+  // ── Duração ───────────────────────────────────────────────
+  duracaoTipo   DuracaoCupom     @default(PERMANENTE)
+
+  dataInicio    DateTime         @default(now())
+  dataFim       DateTime?        // null = sem expiração (PERMANENTE)
+
+  // Happy Hour: horário específico (ex: "14:00" e "17:00")
+  // Armazenado como string HH:MM para simplicidade
+  happyHourInicio String?        // ex: "14:00"
+  happyHourFim    String?        // ex: "17:00"
+
+  // ── Limites de uso ────────────────────────────────────────
+  limiteUsoTotal   Int?          // null = sem limite global
+  limiteUsoPorUser Int  @default(1)
+
+  // ── Estado e métricas ─────────────────────────────────────
   ativo          Boolean  @default(true)
+  destaque       Boolean  @default(false)   // "botão destacar cupom"
+  totalResgates  Int      @default(0)
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -600,7 +623,9 @@ model Cupom {
 
   @@index([petShopId, ativo])
   @@index([tipo])
-  @@index([dataFim])                             // facilita query "expira em breve"
+  @@index([categoria])
+  @@index([dataFim])
+  @@index([destaque, ativo])
   @@map("cupons")
 }
 
@@ -619,39 +644,73 @@ model CupomResgate {
   userId     String
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Status do ciclo de vida do cupom na mão do usuário
   status     StatusResgate @default(ATIVO)
 
-  // Snapshot dos dados no momento do resgate
-  // (protege histórico mesmo se o cupom for editado)
-  petShopId        String
-  petShopNome      String
-  cupomTitulo      String
-  descontoSnapshot Float?
-  dataFimSnapshot  DateTime?          // cópia da dataFim no momento do resgate
+  // Snapshots no momento do resgate (protege histórico)
+  petShopId           String
+  petShopNome         String
+  cupomTitulo         String
+  cupomCategoria      CategoriaCupom?
+  descontoSnapshot    Float?
+  tipoBeneficioSnapshot TipoBeneficio?
+  dataFimSnapshot     DateTime?
 
-  resgatadoEm      DateTime @default(now())
-  utilizadoEm      DateTime?          // quando apresentou ao atendente
-  expiradoEm       DateTime?          // preenchido por job de expiração
+  resgatadoEm   DateTime @default(now())
+  utilizadoEm   DateTime?
+  expiradoEm    DateTime?
 
-  @@unique([cupomId, userId])         // 1 resgate por cupom por usuário (padrão)
+  @@unique([cupomId, userId])
   @@index([userId, status])
   @@index([petShopId])
-  @@index([status, dataFimSnapshot])  // job de expiração usa este índice
+  @@index([status, dataFimSnapshot])
   @@map("cupom_resgates")
 }
 
-
-enum TipoCupom {
-  FIXO       // Disponível sempre enquanto ativo (ex: 10% sempre)
-  SAZONAL    // Campanha com data de início e fim (ex: Natal, Black Friday)
-  FAVORITO   // Gerado automaticamente ao favoritar; 1 por petshop por usuário
+// ── Categoria principal do cupom ──────────────────────────────
+// Usada para ícone no card e filtro no explorar
+enum CategoriaCupom {
+  SERVICOS        // Banho, Tosa, Consulta, Hotelzinho...
+  ALIMENTACAO     // Ração, Sachê, Petiscos, Ossinhos...
+  SAUDE           // Vermífugo, Antipulgas, Vitaminas...
+  ACESSORIOS      // Coleiras, Caminhas, Brinquedos...
+  GATO            // Areia, Ração felina, Arranhador...
+  OUTROS
 }
 
+// ── Tipo do benefício (o QUE o cliente ganha) ─────────────────
+enum TipoBeneficio {
+  DESCONTO_PERCENTUAL   // 10% OFF, 15% OFF...
+  DESCONTO_FIXO         // R$10 OFF, R$20 OFF...
+  BRINDE                // Banho ganha hidratação, ração ganha petisco...
+  COMBO                 // Banho + Tosa com desconto, 2 banhos por preço especial...
+}
+
+// ── Duração do cupom (EXPANDIDA) ──────────────────────────────
 enum DuracaoCupom {
-  ILIMITADO  // Sem data de expiração
-  HORAS_24   // Expira 24h após o resgate
-  SEMANA_1   // Expira 7 dias após o resgate
+  PERMANENTE    // Sempre ativo — ex: "10% em banho às terças"
+  MENSAL        // Dura o mês inteiro — ex: "Promoção de julho"
+  SEMANAL       // Dura a semana — ex: "Semana do Gato"
+  FLASH         // Poucas horas (usa dataFim) — ex: "Somente hoje"
+  HAPPY_HOUR    // Horário específico (usa happyHourInicio/Fim) — ex: "Das 14h às 17h"
+  SAZONAL       // Datas especiais com início/fim — ex: "Black Friday", "Natal"
+}
+
+// ── Tipo interno (lógica de negócio) ─────────────────────────
+enum TipoCupom {
+  FIXO       // Cupons recorrentes/permanentes do pet shop
+  SAZONAL    // Campanhas com datas (Black Friday, Natal...)
+  FAVORITO   // Gerado automaticamente ao favoritar o pet shop
+}
+
+// ── Objetivo estratégico (para relatórios) ───────────────────
+enum ObjetivoCupom {
+  FIDELIZACAO          // Manter cliente voltando
+  RECUPERACAO          // Trazer cliente que sumiu
+  AUMENTO_TICKET       // Comprando acima de R$X ganha Y
+  GIRO_ESTOQUE         // Queima de acessórios, produtos parados
+  SAZONAL              // Produto/serviço de temporada
+  LANCAMENTO           // Novo serviço ou produto
+  AQUISICAO            // Primeiro banho com desconto, cliente novo
 }
 
 enum TipoDesconto {
@@ -659,18 +718,25 @@ enum TipoDesconto {
   FIXO_REAIS   // ex: R$15 OFF
 }
 
+// ── Ícone visual no card ──────────────────────────────────────
+// Mapeado no frontend para o ícone correto do lucide-react-native
 enum TipoCupomIcone {
-  DESCONTO     // tag de desconto
-  BANHO_TOSA   // tesoura/banheira
-  PRODUTO      // caixa/produto
-  VIP          // estrela
-  SAZONAL      // calendário/confete
+  DESCONTO      // Tag — desconto genérico
+  BANHO_TOSA    // Scissors — serviços de estética
+  PRODUTO       // ShoppingBag — produto físico
+  VIP           // Award — cupom favorito / cliente especial
+  SAZONAL       // Star — campanha sazonal
+  SAUDE         // Heart — saúde e medicamentos
+  ALIMENTACAO   // UtensilsCrossed — ração e comida
+  BRINDE        // Gift — brinde
+  COMBO         // Package — combo de serviços
 }
 
+// ── Status do resgate ─────────────────────────────────────────
 enum StatusResgate {
-  ATIVO        // resgatado, ainda válido, não usado
-  UTILIZADO    // apresentado ao atendente e marcado como usado
-  EXPIRADO     // passou da dataFim sem ser utilizado
+  ATIVO       // Resgatado, ainda válido
+  UTILIZADO   // Apresentado ao atendente
+  EXPIRADO    // Passou da dataFim sem uso
 }
 
 enum Especie {

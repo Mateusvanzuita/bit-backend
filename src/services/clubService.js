@@ -23,10 +23,47 @@ function calcDistanciaKm(lat1, lon1, lat2, lon2) {
 // Calcula dataFim com base no duracaoTipo
 function calcularDataFim(duracaoTipo, dataInicio = new Date()) {
   switch (duracaoTipo) {
+    // PERMANENTE — sem expiração
+    case 'PERMANENTE':
+      return null;
+ 
+    // MENSAL — fim do mês corrente (último segundo do último dia)
+    case 'MENSAL': {
+      const fim = new Date(dataInicio);
+      fim.setMonth(fim.getMonth() + 1);
+      fim.setDate(0);          // último dia do mês atual
+      fim.setHours(23, 59, 59, 999);
+      return fim;
+    }
+ 
+    // SEMANAL — 7 dias a partir do início
+    case 'SEMANAL':
+      return new Date(dataInicio.getTime() + 7 * 24 * 60 * 60 * 1000);
+ 
+    // FLASH — 24 horas (mantém compatibilidade com HORAS_24 antigo)
+    case 'FLASH':
     case 'HORAS_24':
       return new Date(dataInicio.getTime() + 24 * 60 * 60 * 1000);
+ 
+    // HAPPY_HOUR — dataFim = hoje com o horário de fim
+    // O backend só valida se está dentro do horário via happyHourInicio/Fim
+    // dataFim aqui é o fim do dia para não expirar fora do horário
+    case 'HAPPY_HOUR': {
+      const fim = new Date(dataInicio);
+      fim.setHours(23, 59, 59, 999);
+      return fim;
+    }
+ 
+    // SAZONAL — dataFim é fornecida explicitamente pelo admin no body
+    // Retorna null aqui; o service usa o valor do body se existir
+    case 'SAZONAL':
+      return null; // será sobrescrito por dados.dataFim no criarCupom
+ 
+    // SEMANA_1 — mantém compatibilidade com schema v1
     case 'SEMANA_1':
       return new Date(dataInicio.getTime() + 7 * 24 * 60 * 60 * 1000);
+ 
+    // ILIMITADO — mantém compatibilidade com schema v1
     case 'ILIMITADO':
     default:
       return null;
@@ -217,8 +254,8 @@ class ClubService {
             descricao: `Desconto exclusivo para clientes fiéis do ${petShop.nome}`,
             tipo: 'FAVORITO',
             valorDesconto: petShop.descontoFavorito,
-            tipoDesconto: 'PERCENTUAL',
-            duracaoTipo: 'ILIMITADO',
+            tipoBeneficio: 'DESCONTO_PERCENTUAL',
+            duracaoTipo: 'PERMANENTE',           
             iconeTipo: 'VIP',
           },
         });
@@ -263,6 +300,7 @@ class ClubService {
           userId,
           petShopId: favorito.petShopId,
           status: 'ATIVO',
+          cupom: { tipo: 'FAVORITO' },
         },
         data: { status: 'EXPIRADO', expiradoEm: new Date() },
       });
@@ -363,6 +401,8 @@ class ClubService {
           status: 'ATIVO',
           petShopNome: cupom.petShop.nome,
           cupomTitulo: cupom.titulo,
+          cupomCategoria: cupom.categoria ?? null,
+          tipoBeneficioSnapshot: cupom.tipoBeneficio ?? null,
           descontoSnapshot: cupom.valorDesconto,
           dataFimSnapshot: dataFimResgate,
         },
@@ -412,23 +452,45 @@ class ClubService {
   // ── CRIAR CUPOM (admin / pet shop) ───────────────────────────────────────
 
   async criarCupom(petShopId, dados) {
-    const petShop = await petShopRepository.findById(petShopId);
-    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
-    if (!petShop.planoAtivo)
-      throw new AppError('Plano Bitzy Club inativo para este pet shop', 403);
-
-    const { duracaoTipo, ...resto } = dados;
-    const dataFim = calcularDataFim(duracaoTipo || 'ILIMITADO');
-
-    return await prisma.cupom.create({
-      data: {
-        petShopId,
-        duracaoTipo: duracaoTipo || 'ILIMITADO',
-        dataFim,
-        ...resto,
-      },
-    });
+  const petShop = await petShopRepository.findById(petShopId);
+  if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+  if (!petShop.planoAtivo)
+    throw new AppError('Plano Bitzy Club inativo para este pet shop', 403);
+ 
+  // ── Valida limite de cupons ativos ─────────────────────────
+  const totalAtivos = await prisma.cupom.count({
+    where: { petShopId, ativo: true },
+  });
+ 
+  const limite = petShop.limiteCuponsAtivos ?? 10;
+  if (totalAtivos >= limite) {
+    throw new AppError(
+      `Este pet shop já atingiu o limite de ${limite} cupons ativos. Desative um cupom antes de criar outro.`,
+      409,
+    );
   }
+ 
+  // ── Calcula dataFim com base no duracaoTipo ────────────────
+  const { duracaoTipo, dataFim: dataFimManual, ...resto } = dados;
+  const tipo = duracaoTipo || 'PERMANENTE';
+ 
+  let dataFim;
+  if (tipo === 'SAZONAL' && dataFimManual) {
+    // SAZONAL: admin informa dataFim explicitamente
+    dataFim = new Date(dataFimManual);
+  } else {
+    dataFim = calcularDataFim(tipo);
+  }
+ 
+  return await prisma.cupom.create({
+    data: {
+      petShopId,
+      duracaoTipo: tipo,
+      dataFim,
+      ...resto,
+    },
+  });
+}
 
   async atualizarCupom(cupomId, petShopId, dados) {
     const cupom = await prisma.cupom.findUnique({ where: { id: cupomId } });
