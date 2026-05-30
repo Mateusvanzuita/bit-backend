@@ -66,6 +66,9 @@ class ClubService {
       raioKm: raioKm || 30,
     });
 
+  console.log('DEBUG _count:', JSON.stringify(petShops[0]?._count, null, 2));
+  console.log('DEBUG cupons direto:', petShops[0]?.cupons);
+
     const [seguidores, favorito] = await Promise.all([
       prisma.petShopSeguidor.findMany({
         where: { userId },

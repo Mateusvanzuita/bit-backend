@@ -65,6 +65,9 @@ class PetShopRepository extends BaseRepository {
           select: {
             seguidores: true,
             favoritos: true,
+            cupons: {                    // ← dentro do select
+              where: { ativo: true },
+            },
           },
         },
       },
