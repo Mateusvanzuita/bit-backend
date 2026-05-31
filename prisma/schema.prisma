@@ -656,6 +656,7 @@ model CupomResgate {
   dataFimSnapshot     DateTime?
 
   avisoEnviado  String?  @map("aviso_enviado") // null | '48h' | '24h' | '4h'
+  totalUsos Int @default(0)
 
   resgatadoEm   DateTime @default(now())
   utilizadoEm   DateTime?

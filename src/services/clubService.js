@@ -249,7 +249,7 @@ class ClubService {
       titulo: `${petShop.nome} é seu favorito! ⭐`,
       mensagem: `Você ganhou ${petShop.descontoFavorito}% de desconto exclusivo em todas as compras.`,
       tipo: 'SISTEMA',
-      pathKey: `/club/petshops/${petShopId}`,
+      pathKey: `/clube/${petShopId}`,
     });
 
     return {
@@ -395,6 +395,7 @@ class ClubService {
   async utilizarCupom(userId, resgateId) {
     const resgate = await prisma.cupomResgate.findUnique({
       where: { id: resgateId },
+      include: { cupom: { select: { limiteUsoPorUser: true } } },
     });
 
     if (!resgate) throw new AppError('Resgate não encontrado', 404);
@@ -407,12 +408,16 @@ class ClubService {
         409,
       );
 
-    if (resgate.dataFimSnapshot && resgate.dataFimSnapshot < new Date())
-      throw new AppError('Este cupom expirou', 410);
+    const novoTotalUsos = (resgate.totalUsos ?? 0) + 1;
+    const limiteAtingido = novoTotalUsos >= resgate.cupom.limiteUsoPorUser;
 
     return await prisma.cupomResgate.update({
       where: { id: resgateId },
-      data: { status: 'UTILIZADO', utilizadoEm: new Date() },
+      data: {
+        totalUsos: novoTotalUsos,
+        utilizadoEm: new Date(),
+        status: limiteAtingido ? 'UTILIZADO' : 'ATIVO',
+      },
     });
   }
 
@@ -476,7 +481,7 @@ class ClubService {
             ? `${cupom.titulo} — ${cupom.descricao}`
             : cupom.titulo,
           tipo: 'SISTEMA',
-          pathKey: `/club/petshops/${petShopId}`,
+          pathKey: `/clube/${petShopId}`,
         }),
       ),
     );
