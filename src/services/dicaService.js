@@ -1,21 +1,43 @@
+// src/services/dicaService.js
 const dicaRepository = require('../repositories/dicaRepository');
 const petRepository = require('../repositories/petRepository');
 const aiService = require('./aiService');
+const cache = require('../utils/cache');
 const { AppError } = require('../middlewares/errorHandler');
+
+const TTL = {
+  LISTA_DICAS: 10 * 60,    // 10 min — lista muda raramente
+  DICA_DETALHES: 15 * 60,  // 15 min — etapas/opções são estáticas
+};
+
+function keyDetalhes(id) {
+  return `dica:detalhes:${id}`;
+}
 
 class DicaService {
   async listAllDicas() {
-    return await dicaRepository.findAll({ orderBy: { createdAt: 'desc' } });
+    const cached = await cache.get('dicas:lista');
+    if (cached) return cached;
+
+    const dicas = await dicaRepository.findAll({ orderBy: { createdAt: 'desc' } });
+    await cache.set('dicas:lista', dicas, TTL.LISTA_DICAS);
+    return dicas;
   }
 
   async getDicaDetails(id) {
+    const cacheKey = keyDetalhes(id);
+    const cached = await cache.get(cacheKey);
+    if (cached) return cached;
+
     const dica = await dicaRepository.findFullDica(id);
     if (!dica) throw new AppError('Dica não encontrada', 404);
+
+    await cache.set(cacheKey, dica, TTL.DICA_DETALHES);
     return dica;
   }
 
   async gerarDicaPersonalizada(userId, petId, dicaId, respostas) {
-    // 1. Validação
+    // Dados pessoais + IA — nunca cachear
     const pet = await petRepository.findByIdAndUser(petId, userId);
     if (!pet) throw new AppError('Pet não encontrado ou acesso negado', 404);
 
@@ -25,29 +47,24 @@ class DicaService {
     }
 
     const historico = await dicaRepository.createHistorico(petId, dicaId);
-
-    // Verifique se o historico foi criado e tem ID
     if (!historico || !historico.id) {
       throw new AppError('Erro ao criar histórico da dica', 500);
     }
-    // 3. Salvar Respostas (Corrigindo o nome da chave para petDicaHistoricoId)
-  const promises = respostas.map(resp => {
-  return dicaRepository.createResposta({
-    historicoId: historico.id,
-    petId: petId,
-    dicaId: dicaId,
-    etapaId: resp.etapaId, // O ID da etapa que vem do frontend
-    opcaoId: resp.opcaoId || null,
-    texto: resp.texto || null
-  });
-});
 
+    const promises = respostas.map(resp =>
+      dicaRepository.createResposta({
+        historicoId: historico.id,
+        petId,
+        dicaId,
+        etapaId: resp.etapaId,
+        opcaoId: resp.opcaoId || null,
+        texto: resp.texto || null,
+      })
+    );
     await Promise.all(promises);
 
-    // 4. Preparar resumo para IA (opcional, melhora o prompt)
     const resumoRespostas = respostas.map(r => `- ${r.etapaId}: ${r.texto || r.opcaoId}`).join('\n');
 
-    // 5. Chamar IA
     try {
       const promptFinal = `
         ${dicaBase.prompt}
@@ -56,18 +73,16 @@ class DicaService {
       `;
 
       const resultadoIA = await aiService.gerarAnaliseBitzy(promptFinal);
-
-      // 6. Salvar resultado final
       await dicaRepository.updateResultadoIA(historico.id, resultadoIA);
-
       return { ...historico, resultadoIA };
     } catch (error) {
-      console.error("❌ ERRO IA DICA:", error);
-      throw new AppError("Falha ao gerar dica com IA", 500);
+      console.error('❌ ERRO IA DICA:', error);
+      throw new AppError('Falha ao gerar dica com IA', 500);
     }
   }
 
   async getHistorico(id) {
+    // Histórico é pessoal — nunca cachear
     const result = await dicaRepository.findHistoricoById(id);
     if (!result) throw new AppError('Histórico não encontrado', 404);
     return result;

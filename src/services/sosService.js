@@ -1,90 +1,77 @@
+// src/services/sosService.js
 const petRepository = require('../repositories/petRepository');
 const aiService = require('./aiService');
 const sosRepository = require('../repositories/sosRepository');
+const cache = require('../utils/cache');
 const { AppError } = require('../middlewares/errorHandler');
 const { SYSTEM_PROMPT, buildPrimeiroAtendimentoPrompt, buildContinuacaoChatPrompt } = require('../utils/sosPrompt');
 
-/**
- * ========== CACHE DE RESPOSTAS ==========
- */
-const responseCache = new Map();
-const CACHE_TTL = 24 * 60 * 60 * 1000;
-const CACHE_MAX_SIZE = 100;
+// ── TTLs ──────────────────────────────────────────────────────────────────────
+const TTL = {
+  HISTORICO: 24 * 60 * 60,   // 24h — histórico de conversa ativa
+  CACHE_IA: 24 * 60 * 60,    // 24h — cache de respostas da IA (igual ao anterior)
+};
 
-// ✅ NOVO: Armazenar históricos em memória (temporário até migration)
-const historicoEmMemoria = new Map();
+// ── Chaves Redis ──────────────────────────────────────────────────────────────
+function keyHistorico(atendimentoId) {
+  return `sos:historico:${atendimentoId}`;
+}
+
+function keyCacheIA(petId, mensagem) {
+  const normalizada = mensagem.toLowerCase().trim().replace(/\s+/g, ' ');
+  return `sos:ia:${petId}:${normalizada}`;
+}
+
+// ── Helper: calcular idade do pet ─────────────────────────────────────────────
+function calcularIdadePet(dataNascimento) {
+  const nascimento = new Date(dataNascimento);
+  const hoje = new Date();
+  let anos = hoje.getFullYear() - nascimento.getFullYear();
+  let meses = hoje.getMonth() - nascimento.getMonth();
+  if (meses < 0) { anos--; meses += 12; }
+  return { anos, meses };
+}
+
+function montarDadosPet(pet) {
+  const { anos, meses } = calcularIdadePet(pet.dataNascimento);
+  return `Pet: ${pet.nome} | Espécie: ${pet.especie} | Raça: ${pet.raca} | Peso: ${pet.peso}kg | Idade: ${anos}a ${meses}m | Castrado: ${pet.castrado ? 'Sim' : 'Não'}`.trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SosService {
-  /**
-   * Processa emergência (primeira mensagem do chat)
-   */
+
+  // ── PRIMEIRA MENSAGEM ─────────────────────────────────────────────────────
+
   async processarEmergencia(userId, petId, mensagemUser) {
     const startTime = Date.now();
-    
+
     try {
-      console.log(`📥 [SOS] Iniciando processamento da emergência...`);
+      console.log('📥 [SOS] Iniciando processamento da emergência...');
 
-      // 1. Busca dados do pet
       const pet = await petRepository.findByIdAndUser(petId, userId);
-      
-      if (!pet) {
-        throw new AppError('Pet não encontrado', 404);
-      }
+      if (!pet) throw new AppError('Pet não encontrado', 404);
 
-      // 2. Calcular idade dinâmica
-      const nascimento = new Date(pet.dataNascimento);
-      const hoje = new Date();
-      let anos = hoje.getFullYear() - nascimento.getFullYear();
-      let meses = hoje.getMonth() - nascimento.getMonth();
-      
-      if (meses < 0) {
-        anos--;
-        meses += 12;
-      }
+      const dadosPet = montarDadosPet(pet);
 
-      // 3. Montar contexto DO PET
-      const dadosPet = `
-Pet: ${pet.nome} | 
-Espécie: ${pet.especie} | 
-Raça: ${pet.raca} | 
-Peso: ${pet.peso}kg | 
-Idade: ${anos}a ${meses}m | 
-Castrado: ${pet.castrado ? 'Sim' : 'Não'}
-      `.trim();
+      // Cache de IA: mesma pergunta + mesmo pet = mesma resposta
+      const cacheIAKey = keyCacheIA(petId, mensagemUser);
+      let respostaIA = await cache.get(cacheIAKey);
 
-      // 4. Verificar cache
-      const mensagemNormalizada = mensagemUser
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, ' ');
-      const cacheKey = `${petId}:${mensagemNormalizada}`;
-      const cachedResponse = this.getFromCache(cacheKey);
-
-      let respostaIA;
-
-      if (cachedResponse) {
-        console.log(`✅ [CACHE] Resposta encontrada no cache!`);
-        respostaIA = cachedResponse;
+      if (respostaIA) {
+        console.log('✅ [CACHE] Resposta encontrada no cache Redis!');
       } else {
-        // 5. Montar prompt da primeira mensagem
         const promptFinal = buildPrimeiroAtendimentoPrompt(dadosPet, mensagemUser);
 
-        // 6. Chamar IA
         console.log('🤖 [IA] Enviando para OpenAI...');
-        const iaStartTime = Date.now();
-
+        const iaStart = Date.now();
         respostaIA = await aiService.gerarAnaliseBitzy(promptFinal, SYSTEM_PROMPT);
+        console.log(`✅ [IA] Resposta gerada em ${Date.now() - iaStart}ms`);
 
-        const iaTime = Date.now() - iaStartTime;
-        console.log(`✅ [IA] Resposta gerada em ${iaTime}ms`);
-
-        // 7. Salvar no cache
-        this.saveToCache(cacheKey, respostaIA);
+        await cache.set(cacheIAKey, respostaIA, TTL.CACHE_IA);
       }
 
-      // 8. Salvar no banco
       console.log('💾 [DB] Salvando no banco de dados...');
-
       const atendimento = await sosRepository.create({
         userId,
         petId,
@@ -92,145 +79,83 @@ Castrado: ${pet.castrado ? 'Sim' : 'Não'}
         respostaIA,
       });
 
-      // ✅ NOVO: Salvar histórico em memória (temporário)
-      historicoEmMemoria.set(atendimento.id, [
-        {
-          role: 'user',
-          content: mensagemUser,
-          timestamp: new Date()
-        },
-        {
-          role: 'assistant',
-          content: respostaIA,
-          timestamp: new Date()
-        }
-      ]);
+      // Salva histórico inicial no Redis (substitui o Map em memória)
+      const historico = [
+        { role: 'user',      content: mensagemUser, timestamp: new Date() },
+        { role: 'assistant', content: respostaIA,   timestamp: new Date() },
+      ];
+      await cache.set(keyHistorico(atendimento.id), historico, TTL.HISTORICO);
 
-      const totalTime = Date.now() - startTime;
-      console.log(`✅ [SOS] Atendimento criado em ${totalTime}ms`);
-      console.log(`   ID: ${atendimento.id}\n`);
-
+      console.log(`✅ [SOS] Atendimento criado em ${Date.now() - startTime}ms — ID: ${atendimento.id}`);
       return atendimento;
 
     } catch (error) {
-      console.error(`❌ [SOS] Erro:`, error.message);
+      console.error('❌ [SOS] Erro:', error.message);
       throw error;
     }
   }
 
-  /**
-   * ========== NOVO: Adicionar mensagem ao chat ==========
-   */
+  // ── CONTINUAR CHAT ────────────────────────────────────────────────────────
+
   async adicionarMensagemAoChat(atendimentoId, userId, novaMensagem) {
     const startTime = Date.now();
-    
+
     try {
-      console.log(`\n📥 [CHAT] Adicionando nova mensagem ao chat...`);
+      console.log('📥 [CHAT] Adicionando nova mensagem ao chat...');
 
-      // 1. Buscar atendimento existente
       const atendimento = await sosRepository.findByIdAndUser(atendimentoId, userId);
-      
-      if (!atendimento) {
-        throw new AppError('Atendimento não encontrado', 404);
-      }
+      if (!atendimento) throw new AppError('Atendimento não encontrado', 404);
 
-      // 2. Buscar dados do pet para contexto
       const pet = await petRepository.findById(atendimento.petId);
+      const dadosPet = montarDadosPet(pet);
 
-      // 3. Recuperar histórico anterior (da memória)
-      let historico = historicoEmMemoria.get(atendimentoId) || [];
+      // Recupera histórico do Redis
+      const historico = await cache.get(keyHistorico(atendimentoId)) || [];
 
-      // 4. Calcular idade do pet
-      const nascimento = new Date(pet.dataNascimento);
-      const hoje = new Date();
-      let anos = hoje.getFullYear() - nascimento.getFullYear();
-      let meses = hoje.getMonth() - nascimento.getMonth();
-      
-      if (meses < 0) {
-        anos--;
-        meses += 12;
-      }
-
-      const dadosPet = `
-Pet: ${pet.nome} | 
-Espécie: ${pet.especie} | 
-Raça: ${pet.raca} | 
-Peso: ${pet.peso}kg | 
-Idade: ${anos}a ${meses}m | 
-Castrado: ${pet.castrado ? 'Sim' : 'Não'}
-      `.trim();
-
-      // 5. Montar prompt com histórico completo
       const historicoTexto = historico
         .map(msg => `${msg.role === 'user' ? 'TUTOR' : 'SOS BITZY'}: ${msg.content}`)
         .join('\n\n');
 
       const promptFinal = buildContinuacaoChatPrompt(dadosPet, historicoTexto, novaMensagem);
 
-      // 6. Chamar IA
       console.log('🤖 [CHAT] Enviando para OpenAI...');
-      const iaStartTime = Date.now();
-
+      const iaStart = Date.now();
       const respostaIA = await aiService.gerarAnaliseBitzy(promptFinal, SYSTEM_PROMPT);
+      console.log(`✅ [CHAT] Resposta gerada em ${Date.now() - iaStart}ms`);
 
-      const iaTime = Date.now() - iaStartTime;
-      console.log(`✅ [CHAT] Resposta gerada em ${iaTime}ms`);
+      // Atualiza histórico no Redis
+      const historicoAtualizado = [
+        ...historico,
+        { role: 'user',      content: novaMensagem, timestamp: new Date() },
+        { role: 'assistant', content: respostaIA,   timestamp: new Date() },
+      ];
+      await cache.set(keyHistorico(atendimentoId), historicoAtualizado, TTL.HISTORICO);
 
-      // 7. Adicionar nova mensagem ao histórico
-      historico.push({
-        role: 'user',
-        content: novaMensagem,
-        timestamp: new Date()
-      });
-
-      historico.push({
-        role: 'assistant',
-        content: respostaIA,
-        timestamp: new Date()
-      });
-
-      // 8. Salvar histórico atualizado em memória
-      historicoEmMemoria.set(atendimentoId, historico);
-
-      // 9. Atualizar atendimento no banco (com última resposta)
       console.log('💾 [DB] Atualizando histórico...');
+      const atendimentoAtualizado = await sosRepository.update(atendimentoId, { respostaIA });
 
-      const atendimentoAtualizado = await sosRepository.update(
-        atendimentoId,
-        {
-          respostaIA: respostaIA,
-        }
-      );
-
-      const totalTime = Date.now() - startTime;
-      console.log(`✅ [CHAT] Mensagem processada em ${totalTime}ms`);
-      console.log(`   Histórico: ${historico.length} mensagens\n`);
+      console.log(`✅ [CHAT] Mensagem processada em ${Date.now() - startTime}ms — ${historicoAtualizado.length} mensagens`);
 
       return {
         ...atendimentoAtualizado,
-        respostaIA: respostaIA, // Assegurar que retorna a resposta
-        historico: historico // Retornar histórico também
+        respostaIA,
+        historico: historicoAtualizado,
       };
 
     } catch (error) {
-      console.error(`❌ [CHAT] Erro:`, error.message);
+      console.error('❌ [CHAT] Erro:', error.message);
       throw error;
     }
   }
 
-  /**
-   * ========== NOVO: Obter histórico completo ==========
-   */
+  // ── HISTÓRICO COMPLETO ────────────────────────────────────────────────────
+
   async obterHistoricoCompleto(atendimentoId, userId) {
     try {
       const atendimento = await sosRepository.findByIdAndUser(atendimentoId, userId);
-      
-      if (!atendimento) {
-        throw new AppError('Atendimento não encontrado', 404);
-      }
+      if (!atendimento) throw new AppError('Atendimento não encontrado', 404);
 
-      // Recuperar histórico da memória
-      const historico = historicoEmMemoria.get(atendimentoId) || [];
+      const historico = await cache.get(keyHistorico(atendimentoId)) || [];
 
       return {
         atendimentoId: atendimento.id,
@@ -238,93 +163,66 @@ Castrado: ${pet.castrado ? 'Sim' : 'Não'}
         status: 'ativo',
         criadoEm: atendimento.createdAt,
         atualizadoEm: atendimento.updatedAt,
-        mensagens: historico
+        mensagens: historico,
       };
 
     } catch (error) {
-      console.error(`❌ [CHAT] Erro ao obter histórico:`, error.message);
+      console.error('❌ [CHAT] Erro ao obter histórico:', error.message);
       throw error;
     }
   }
 
-  /**
-   * ========== NOVO: Encerrar atendimento ==========
-   */
+  // ── ENCERRAR ATENDIMENTO ──────────────────────────────────────────────────
+
   async encerrarAtendimento(atendimentoId, userId) {
     try {
       const atendimento = await sosRepository.findByIdAndUser(atendimentoId, userId);
-      
-      if (!atendimento) {
-        throw new AppError('Atendimento não encontrado', 404);
-      }
+      if (!atendimento) throw new AppError('Atendimento não encontrado', 404);
 
-      // Limpar histórico da memória
-      historicoEmMemoria.delete(atendimentoId);
+      // Remove histórico do Redis ao encerrar
+      await cache.del(keyHistorico(atendimentoId));
 
       console.log(`✅ [SOS] Atendimento ${atendimentoId} encerrado`);
-
       return atendimento;
 
     } catch (error) {
-      console.error(`❌ [SOS] Erro ao encerrar:`, error.message);
+      console.error('❌ [SOS] Erro ao encerrar:', error.message);
       throw error;
     }
   }
 
-  /**
-   * Buscar atendimento existente (compatibilidade)
-   */
+  // ── BUSCAR ATENDIMENTO ────────────────────────────────────────────────────
+
   async getAtendimento(id, userId) {
     try {
       const atendimento = await sosRepository.findByIdAndUser(id, userId);
       if (!atendimento) throw new AppError('Atendimento não encontrado', 404);
-      
-      // Retornar também o histórico
-      const historico = historicoEmMemoria.get(id) || [];
-      return {
-        ...atendimento,
-        historico: historico
-      };
+
+      const historico = await cache.get(keyHistorico(id)) || [];
+
+      return { ...atendimento, historico };
+
     } catch (error) {
       throw error;
     }
   }
 
-  /**
-   * ========== FUNÇÕES DE CACHE ==========
-   */
-  getFromCache(key) {
-    const cached = responseCache.get(key);
-    if (!cached) return null;
-    if (Date.now() - cached.timestamp > CACHE_TTL) {
-      responseCache.delete(key);
-      return null;
+  // ── ESTATÍSTICAS DE CACHE (utilitário) ───────────────────────────────────
+
+  async getEstatisticasCache() {
+    try {
+      const redis = require('../config/redis');
+      const [historicoKeys, iaKeys] = await Promise.all([
+        redis.keys('sos:historico:*'),
+        redis.keys('sos:ia:*'),
+      ]);
+      return {
+        historicosAtivos: historicoKeys.length,
+        respostasIACacheadas: iaKeys.length,
+      };
+    } catch {
+      return { historicosAtivos: 0, respostasIACacheadas: 0 };
     }
-    return cached.data;
-  }
-
-  saveToCache(key, data) {
-    if (responseCache.size >= CACHE_MAX_SIZE) {
-      const firstKey = responseCache.keys().next().value;
-      responseCache.delete(firstKey);
-    }
-    responseCache.set(key, {
-      data,
-      timestamp: Date.now(),
-    });
-  }
-
-  limparCache() {
-    responseCache.clear();
-    console.log(`🗑️  [CACHE] Cache limpo`);
-  }
-
-  getEstatisticasCache() {
-    return {
-      itensNoCache: responseCache.size,
-      tamanhoMaximo: CACHE_MAX_SIZE,
-      percentualOcupado: ((responseCache.size / CACHE_MAX_SIZE) * 100).toFixed(2),
-    };
   }
 }
 

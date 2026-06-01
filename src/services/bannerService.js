@@ -22,12 +22,8 @@ class BannerService {
 
   async getAllBanners() {
     const cached = await cache.get(CACHE_KEY);
-    if (cached) {
-      console.log('🟢 Banners: retornado do cache');
-      return cached;
-    }
+    if (cached) return cached;
 
-    console.log('🔵 Banners: buscando do banco...');
     const banners = await prisma.bannerHome.findMany({
       orderBy: { ordem: 'asc' },
     });
