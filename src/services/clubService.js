@@ -174,49 +174,29 @@ class ClubService {
     if (!petShop || !petShop.ativo || !petShop.planoAtivo)
       throw new AppError('Pet shop não encontrado no Bitzy Club', 404);
 
-    const usuario = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { ultimoFavoritadoEm: true },
-    });
-
-    if (usuario?.ultimoFavoritadoEm) {
-      const diasDesdeUltimoFavorito =
-        (Date.now() - new Date(usuario.ultimoFavoritadoEm).getTime()) / (1000 * 60 * 60 * 24);
-      if (diasDesdeUltimoFavorito < 30) {
-        const diasRestantes = Math.ceil(30 - diasDesdeUltimoFavorito);
-        throw new AppError(
-          `Você só pode trocar de pet shop favorito uma vez por mês. Tente novamente em ${diasRestantes} dia(s).`,
-          429,
-        );
-      }
-    }
-
+    // Verifica se já tem um favorito ativo
     const favoritoAtual = await prisma.petShopFavorito.findUnique({
       where: { userId },
     });
 
-    if (favoritoAtual?.petShopId === petShopId)
-      throw new AppError('Este pet shop já é o seu favorito', 409);
+    if (favoritoAtual) {
+      if (favoritoAtual.petShopId === petShopId)
+        throw new AppError('Este pet shop já é o seu favorito', 409);
+
+      // Bloqueia troca — deve desfavoritar primeiro
+      throw new AppError(
+        'Você já tem um pet shop favorito. Para favoritar outro, primeiro desfavorite o atual.',
+        409,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
-      if (favoritoAtual) {
-        await tx.petShopFavorito.delete({ where: { userId } });
-        await tx.cupomResgate.updateMany({
-          where: {
-            userId,
-            petShopId: favoritoAtual.petShopId,
-            cupom: { tipo: 'FAVORITO' },
-            status: 'ATIVO',
-          },
-          data: { status: 'EXPIRADO', expiradoEm: new Date() },
-        });
-      }
-
       await tx.petShopFavorito.create({
         data: {
           userId,
           petShopId,
           descontoSnapshot: petShop.descontoFavorito,
+          favoritadoEm: new Date(), // garante timestamp correto
         },
       });
 
@@ -225,13 +205,6 @@ class ClubService {
         create: { userId, petShopId },
         update: {},
       });
-
-      if (!favoritoAtual || favoritoAtual.petShopId !== petShopId) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { ultimoFavoritadoEm: new Date() },
-        });
-      }
 
       let cupomFavorito = await tx.cupom.findFirst({
         where: { petShopId, tipo: 'FAVORITO', ativo: true },
@@ -268,10 +241,9 @@ class ClubService {
       });
     });
 
-    // ── Notificação: favorito confirmado ──────────────────────────────────
     await notificationService.notificar(userId, {
       titulo: `${petShop.nome} é seu favorito! ⭐`,
-      mensagem: `Você ganhou ${petShop.descontoFavorito}% de desconto exclusivo em todas as compras.`,
+      mensagem: `Você ganhou ${petShop.descontoFavorito}% de desconto exclusivo. Você precisa manter este favorito por 30 dias.`,
       tipo: 'SISTEMA',
       pathKey: `/clube/${petShopId}`,
     });
@@ -280,6 +252,7 @@ class ClubService {
       favorito: true,
       descontoFavorito: petShop.descontoFavorito,
       petShopNome: petShop.nome,
+      favoritadoEm: new Date(),
     };
   }
 
@@ -288,6 +261,26 @@ class ClubService {
       where: { userId },
     });
     if (!favorito) throw new AppError('Você não tem nenhum pet shop favorito', 404);
+
+    // Verifica permanência de 30 dias
+    const diasFavoritado =
+      (Date.now() - new Date(favorito.favoritadoEm).getTime()) / (1000 * 60 * 60 * 24);
+
+    if (diasFavoritado < 30) {
+      const diasRestantes = Math.ceil(30 - diasFavoritado);
+      const dataLiberacao = new Date(favorito.favoritadoEm);
+      dataLiberacao.setDate(dataLiberacao.getDate() + 30);
+
+      throw new AppError(
+        JSON.stringify({
+          tipo: 'PERMANENCIA_ATIVA',
+          mensagem: `Você ainda não pode desfavoritar. Faltam ${diasRestantes} dia(s) para o período de permanência terminar.`,
+          diasRestantes,
+          dataLiberacao: dataLiberacao.toISOString(),
+        }),
+        429,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.petShopFavorito.delete({ where: { userId } });
@@ -302,15 +295,7 @@ class ClubService {
       });
     });
 
-    const dataLiberacao = new Date(favorito.favoritadoEm);
-    dataLiberacao.setDate(dataLiberacao.getDate() + 30);
-    const dataFormatada = dataLiberacao.toLocaleDateString('pt-BR');
-
-    return {
-      favorito: false,
-      aviso: `Você só poderá favoritar outra loja a partir de ${dataFormatada}.`,
-      dataLiberacao: dataLiberacao.toISOString(),
-    };
+    return { favorito: false };
   }
 
   // ── CUPONS ────────────────────────────────────────────────────────────────
