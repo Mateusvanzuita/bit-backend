@@ -174,6 +174,23 @@ class ClubService {
     if (!petShop || !petShop.ativo || !petShop.planoAtivo)
       throw new AppError('Pet shop não encontrado no Bitzy Club', 404);
 
+    const usuario = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { ultimoFavoritadoEm: true },
+    });
+
+    if (usuario?.ultimoFavoritadoEm) {
+      const diasDesdeUltimoFavorito =
+        (Date.now() - new Date(usuario.ultimoFavoritadoEm).getTime()) / (1000 * 60 * 60 * 24);
+      if (diasDesdeUltimoFavorito < 30) {
+        const diasRestantes = Math.ceil(30 - diasDesdeUltimoFavorito);
+        throw new AppError(
+          `Você só pode trocar de pet shop favorito uma vez por mês. Tente novamente em ${diasRestantes} dia(s).`,
+          429,
+        );
+      }
+    }
+
     const favoritoAtual = await prisma.petShopFavorito.findUnique({
       where: { userId },
     });
@@ -207,6 +224,11 @@ class ClubService {
         where: { userId_petShopId: { userId, petShopId } },
         create: { userId, petShopId },
         update: {},
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { ultimoFavoritadoEm: new Date() },
       });
 
       let cupomFavorito = await tx.cupom.findFirst({
@@ -352,8 +374,17 @@ class ClubService {
     if (resgateExistente) {
       if (resgateExistente.status === 'ATIVO')
         throw new AppError('Você já resgatou este cupom e ele ainda está ativo', 409);
-      if (resgateExistente.status === 'UTILIZADO')
+      if (resgateExistente.status === 'UTILIZADO' && cupom.tipo !== 'FIXO')
         throw new AppError('Você já utilizou este cupom', 409);
+      // Cupom FIXO já utilizado: reativar o resgate existente
+      if (resgateExistente.status === 'UTILIZADO' && cupom.tipo === 'FIXO') {
+        await prisma.cupomResgate.update({
+          where: { id: resgateExistente.id },
+          data: { status: 'ATIVO', expiradoEm: null },
+        });
+        // Não incrementa totalResgates no cupom pai pois não é um novo resgate
+        return await prisma.cupomResgate.findUnique({ where: { id: resgateExistente.id } });
+      }
     }
 
     const dataFimResgate = calcularDataFim(cupom.duracaoTipo, agora);
@@ -395,7 +426,7 @@ class ClubService {
   async utilizarCupom(userId, resgateId) {
     const resgate = await prisma.cupomResgate.findUnique({
       where: { id: resgateId },
-      include: { cupom: { select: { limiteUsoPorUser: true } } },
+      include: { cupom: { select: { limiteUsoPorUser: true, tipo: true } } },
     });
 
     if (!resgate) throw new AppError('Resgate não encontrado', 404);
@@ -409,7 +440,8 @@ class ClubService {
       );
 
     const novoTotalUsos = (resgate.totalUsos ?? 0) + 1;
-    const limiteAtingido = novoTotalUsos >= resgate.cupom.limiteUsoPorUser;
+    const isCupomFixo = resgate.cupom.tipo === 'FIXO';
+    const limiteAtingido = !isCupomFixo && novoTotalUsos >= resgate.cupom.limiteUsoPorUser;
 
     return await prisma.cupomResgate.update({
       where: { id: resgateId },

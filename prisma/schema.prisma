@@ -35,7 +35,8 @@ model User {
   petShopFavorito     PetShopFavorito?
   cupomResgates       CupomResgate[]
   pushToken           String?
-
+  ultimoFavoritadoEm DateTime?
+  
   latitude   Float?
   longitude  Float?
   cidade     String?
