@@ -2,17 +2,18 @@
 const express = require('express');
 const analiseController = require('../controllers/analiseController');
 const authMiddleware = require('../middlewares/auth');
+const { aiLimiter } = require('../middlewares/rateLimiter');
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
+// Leitura — sem limiter
 router.get('/', analiseController.index);
-
-// DEVE vir antes do /:id para o Express não se confundir
-router.get('/historico/:historicoId', analiseController.getHistorico); 
-
+router.get('/historico/:historicoId', analiseController.getHistorico);
 router.get('/:id', analiseController.show);
-router.post('/:id/submit', analiseController.submit);
+
+// Submissão chama IA — limitada por usuário
+router.post('/:id/submit', aiLimiter, analiseController.submit);
 
 module.exports = router;
