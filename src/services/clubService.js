@@ -226,10 +226,12 @@ class ClubService {
         update: {},
       });
 
-      await tx.user.update({
-        where: { id: userId },
-        data: { ultimoFavoritadoEm: new Date() },
-      });
+      if (!favoritoAtual || favoritoAtual.petShopId !== petShopId) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { ultimoFavoritadoEm: new Date() },
+        });
+      }
 
       let cupomFavorito = await tx.cupom.findFirst({
         where: { petShopId, tipo: 'FAVORITO', ativo: true },
@@ -300,7 +302,15 @@ class ClubService {
       });
     });
 
-    return { favorito: false };
+    const dataLiberacao = new Date(favorito.favoritadoEm);
+    dataLiberacao.setDate(dataLiberacao.getDate() + 30);
+    const dataFormatada = dataLiberacao.toLocaleDateString('pt-BR');
+
+    return {
+      favorito: false,
+      aviso: `Você só poderá favoritar outra loja a partir de ${dataFormatada}.`,
+      dataLiberacao: dataLiberacao.toISOString(),
+    };
   }
 
   // ── CUPONS ────────────────────────────────────────────────────────────────
