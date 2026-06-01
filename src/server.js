@@ -1,6 +1,7 @@
 const app = require('./app');
 const config = require('./config/env');
 const prisma = require('./config/database');
+const redis = require('./config/redis'); 
 const cron = require('node-cron');
 const expirarCuponsJob = require('./jobs/expirarCupons');
 const aniversariosJob = require('./jobs/aniversariosJob');
@@ -9,6 +10,9 @@ const clienteSumidoJob  = require('./jobs/clienteSumidoJob');
 const startServer = async () => {
   await prisma.$connect();
   console.log('✅ Banco de dados conectado');
+
+  await redis.ping(); // <- valida conexão na inicialização
+  console.log('✅ Redis conectado');
   
   cron.schedule('*/15 * * * *', expirarCuponsJob);
   console.log('✅ Job de expiração de cupons agendado');
