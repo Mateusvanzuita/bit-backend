@@ -10,6 +10,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Admin {
+  id        String    @id @default(uuid())
+
+  nome      String
+  email     String    @unique
+  senha     String
+
+  role      RoleAdmin @default(EDITOR)
+
+  ativo     Boolean   @default(true)
+
+  // Controle de acesso ao prompt do SOS
+  sosPrompt SosPrompt[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+model SosPrompt {
+  id        String   @id @default(uuid())
+
+  conteudo  String   @db.Text
+  ativo     Boolean  @default(false)  // apenas 1 ativo por vez
+
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([ativo])
+  @@map("sos_prompts")
+}
+
 
 model User {
   id              String   @id @default(uuid())
@@ -668,6 +703,11 @@ model CupomResgate {
   @@index([petShopId])
   @@index([status, dataFimSnapshot])
   @@map("cupom_resgates")
+}
+
+enum RoleAdmin {
+  SUPER_ADMIN   // acesso total
+  EDITOR        // pode editar conteúdo mas não criar admins
 }
 
 // ── Categoria principal do cupom ──────────────────────────────

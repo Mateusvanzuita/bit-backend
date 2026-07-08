@@ -9,6 +9,7 @@ const salvoRoutes = require('./salvoRoutes')
 const sosRoutes = require('./sosRoutes');
 const clubRoutes = require('./clubRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const adminRoutes = require('./adminRoutes');
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use('/salvos', salvoRoutes);
 router.use('/sos', sosRoutes);
 router.use('/club', clubRoutes);
 router.use('/notificacoes', notificationRoutes);
+router.use('/admin', adminRoutes);
 
 module.exports = router;

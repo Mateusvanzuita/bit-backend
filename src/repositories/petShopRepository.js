@@ -108,6 +108,55 @@ class PetShopRepository extends BaseRepository {
       ],
     });
   }
+
+  async findAllAdmin() {
+  return await prisma.petShop.findMany({
+    select: {
+      id: true,
+      nome: true,
+      descricao: true,
+      logoUrl: true,
+      bannerUrl: true,
+      endereco: true,
+      cidade: true,
+      estado: true,
+      pais: true,
+      latitude: true,
+      longitude: true,
+      telefone: true,
+      whatsapp: true,
+      instagram: true,
+      website: true,
+      ativo: true,
+      planoAtivo: true,
+      planoInicioEm: true,
+      planoFimEm: true,
+      descontoFavorito: true,
+      limiteCuponsAtivos: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          seguidores: true,
+          favoritos: true,
+          cupons: { where: { ativo: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async atualizar(id, dados) {
+  return await prisma.petShop.update({
+    where: { id },
+    data: dados,
+  });
+}
+
+async deletar(id) {
+  return await prisma.petShop.delete({ where: { id } });
+}
 }
 
 module.exports = new PetShopRepository();

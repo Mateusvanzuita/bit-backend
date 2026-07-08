@@ -564,6 +564,18 @@ class ClubService {
       resgates: metricas,
     };
   }
+  
+  async listarCuponsPetShop(petShopId) {
+  const petShop = await petShopRepository.findById(petShopId);
+  if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+
+  const cupons = await prisma.cupom.findMany({
+    where: { petShopId },
+    orderBy: [{ ativo: 'desc' }, { createdAt: 'desc' }],
+  });
+
+  return cupons;
+}
 }
 
 module.exports = new ClubService();

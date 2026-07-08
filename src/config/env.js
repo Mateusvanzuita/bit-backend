@@ -11,6 +11,6 @@ module.exports = {
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS 
       ? process.env.ALLOWED_ORIGINS.split(',') 
-      : ['http://localhost:19006'],
+      : ['http://localhost:19006', 'http://localhost:5173', 'http://localhost:5174'],
   },
 };

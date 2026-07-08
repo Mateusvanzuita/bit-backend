@@ -111,6 +111,13 @@ router.get(
 // Por ora sem middleware de role — adicione authPetShop ou authAdmin quando
 // implementar o painel do estabelecimento
 
+router.get(
+  '/petshops/:petShopId/cupons',
+  petShopIdValidator,
+  validate,
+  clubController.listarCuponsPetShop,
+);
+
 router.post(
   '/petshops/:petShopId/cupons',
   criarCupomValidator,

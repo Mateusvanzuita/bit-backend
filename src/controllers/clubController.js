@@ -121,6 +121,11 @@ class ClubController {
     const dados = await clubService.metricasPetShop(req.params.petShopId);
     res.status(200).json({ status: 'success', data: dados });
   });
+
+  listarCuponsPetShop = asyncHandler(async (req, res) => {
+  const cupons = await clubService.listarCuponsPetShop(req.params.petShopId);
+  res.status(200).json({ status: 'success', data: { cupons } });
+});
 }
 
 module.exports = new ClubController();
