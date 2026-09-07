@@ -20,28 +20,44 @@ class PetShopRepository extends BaseRepository {
   // ── Busca por proximidade (GPS) ──────────────────────────────────────────
   // Retorna pet shops ativos/com plano dentro de ~raioKm km
   // Filtra por cidade como fallback se não houver coords
+  //
+  // ⚠️ IMPORTANTE: se nem coordenadas nem cidade forem fornecidas, retorna
+  // lista vazia. Nunca deve cair para "sem filtro" — isso já causou um bug
+  // em produção onde pet shops de qualquer lugar do Brasil apareciam para
+  // usuários sem localização cadastrada (users.latitude / users.cidade nulos).
   async findNearby({ latitude, longitude, raioKm = 30, cidade, estado }) {
-    // Haversine via SQL raw para performance
-    // 1 grau de latitude ≈ 111 km
-    const raioGraus = raioKm / 111;
-
     const where = {
       ativo: true,
       planoAtivo: true,
     };
 
-    if (latitude && longitude) {
+    if (latitude != null && longitude != null) {
+      // 1 grau de latitude ≈ 111 km (constante, não varia com a posição)
+      const raioGrausLat = raioKm / 111;
+
+      // 1 grau de longitude encolhe conforme se afasta do equador:
+      // ao nível do mar, 1° de longitude ≈ 111 km * cos(latitude)
+      // Sem essa correção, em latitudes mais altas (sul do Brasil, por
+      // exemplo) a caixa de busca fica mais larga que o raioKm pretendido.
+      const latRad = (latitude * Math.PI) / 180;
+      const kmPorGrauLongitude = 111 * Math.cos(latRad);
+      const raioGrausLon = raioKm / Math.max(kmPorGrauLongitude, 1); // evita divisão por ~0 nos polos
+
       where.latitude = {
-        gte: latitude - raioGraus,
-        lte: latitude + raioGraus,
+        gte: latitude - raioGrausLat,
+        lte: latitude + raioGrausLat,
       };
       where.longitude = {
-        gte: longitude - raioGraus,
-        lte: longitude + raioGraus,
+        gte: longitude - raioGrausLon,
+        lte: longitude + raioGrausLon,
       };
     } else if (cidade) {
       where.cidade = { contains: cidade, mode: 'insensitive' };
       if (estado) where.estado = estado;
+    } else {
+      // Sem coordenadas E sem cidade: não há base geográfica para filtrar.
+      // Retornar tudo seria vazar pet shops de todo o país para o usuário.
+      return [];
     }
 
     return await prisma.petShop.findMany({
