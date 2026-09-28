@@ -624,7 +624,8 @@ model PetShop {
   planoInicioEm DateTime?
   planoFimEm    DateTime?
 
-  descontoFavorito Float @default(10.0)
+  descontoFavoritoAtivo Boolean @default(false)
+  descontoFavorito      Float   @default(10.0)
 
   limiteCuponsAtivos Int @default(10)
 
@@ -681,7 +682,7 @@ model PetShopFavorito {
   petShopId  String
   petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
 
-  descontoSnapshot Float
+  descontoSnapshot Float?
 
   favoritadoEm DateTime @default(now())
 

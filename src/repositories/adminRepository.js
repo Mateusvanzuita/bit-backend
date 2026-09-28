@@ -33,6 +33,7 @@ class AdminRepository extends BaseRepository {
       planoAtivo: true,
       planoInicioEm: true,
       planoFimEm: true,
+      descontoFavoritoAtivo: true,
       descontoFavorito: true,
       limiteCuponsAtivos: true,
       crmPetshopId: true,

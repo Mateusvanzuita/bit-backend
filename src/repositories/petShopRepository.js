@@ -77,6 +77,7 @@ class PetShopRepository extends BaseRepository {
         telefone: true,
         whatsapp: true,
         instagram: true,
+        descontoFavoritoAtivo: true,
         descontoFavorito: true,
         _count: {
           select: {
@@ -194,6 +195,8 @@ async listarDiretos() {
       estado: true,
       ativo: true,
       aprovado: true,
+      descontoFavoritoAtivo: true,
+      descontoFavorito: true,
       createdAt: true,
       _count: {
         select: {

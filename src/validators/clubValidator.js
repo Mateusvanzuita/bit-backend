@@ -246,6 +246,16 @@ const criarPetShopValidator = [
     .optional({ nullable: true, checkFalsy: true })
     .isFloat({ min: 5, max: 100 }).withMessage('Desconto favorito deve ser entre 5% e 100%'),
 
+  body('descontoFavoritoAtivo')
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage('descontoFavoritoAtivo deve ser true ou false'),
+
+  body('descontoFavorito')
+    .optional({ nullable: true, checkFalsy: true })
+    .isFloat({ min: 5, max: 100 })
+    .withMessage('Desconto favorito deve ser entre 5% e 100%'),
+
   body('planoAtivo')
     .optional({ nullable: true })
     .isBoolean().withMessage('planoAtivo deve ser true ou false'),
