@@ -21,6 +21,9 @@ router.post('/vaccines/:id/doses', petController.addDose);
 router.post('/:id/foto', uploadPetPhoto, uploadController.uploadPetPhoto);
 router.get('/:id/vaccines', petController.getVaccines);
 router.post('/:id/vaccines', petController.addVaccine);
+router.get('/:id/registros-clinicos', petController.getRegistrosClinicos);
+router.get('/:id/vinculo-clinica', petController.getVinculoClinica);
+router.delete('/:id/vinculo-clinica', petController.desvincularClinica);
 
 // --- ROTAS GENÉRICAS DE PET (devem vir POR ÚLTIMO) ---
 router.get('/:id', petController.show);

@@ -45,6 +45,26 @@ class UploadController {
       },
     });
   });
+
+  /**
+   * Upload de foto de produto em oferta (uso do admin interno).
+   * POST /api/v1/internal/ofertas/upload-foto
+   */
+  uploadOfertaPhoto = asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Nenhuma imagem enviada.',
+      });
+    }
+
+    console.log(`✅ [UPLOAD] Foto de oferta enviada: ${req.file.path}`);
+
+    res.status(200).json({
+      status: 'success',
+      data: { fotoUrl: req.file.path },
+    });
+  });
 }
 
 function extractPublicId(url) {

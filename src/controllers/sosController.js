@@ -19,6 +19,33 @@ class SosController {
   });
 
   /**
+   * Transcreve um áudio enviado pelo tutor (multipart/form-data, campo "audio").
+   * Não cria nem altera nenhum atendimento — só devolve o texto transcrito,
+   * para o app inserir no input e o usuário revisar antes de enviar.
+   * POST /api/v1/sos/transcrever
+   */
+  transcrever = asyncHandler(async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Nenhum áudio foi enviado.',
+      });
+    }
+
+    const aiService = require('../services/aiService');
+    const texto = await aiService.transcreverAudio(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { texto },
+    });
+  });
+
+  /**
    * Busca um atendimento específico (para carregar chat)
    * GET /api/v1/sos/:id
    */

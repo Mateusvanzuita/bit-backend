@@ -58,6 +58,14 @@ async findAniversariantes() {
         AND EXTRACT(DAY   FROM p."dataNascimento") = EXTRACT(DAY   FROM NOW())
     `;
   }
+  async findRegistrosClinicosByPetId(petId) {
+    return await prisma.registroClinicoApp.findMany({
+      where: { petId },
+      include: { anexos: true },
+      orderBy: { data: 'desc' },
+    });
+  }
 }
+
 
 module.exports = new PetRepository();

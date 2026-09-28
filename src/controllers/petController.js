@@ -1,5 +1,6 @@
 // src/controllers/petController.js
 const petService = require('../services/petService');
+const vinculoClinicaService = require('../services/vinculoClinicaService');
 const asyncHandler = require('../utils/asyncHandler');
 
 class PetController {
@@ -28,10 +29,10 @@ class PetController {
     res.status(204).json({ status: 'success', data: null });
   });
 
-getVaccines = asyncHandler(async (req, res) => {
-    const vaccines = await petService.getPetVaccines(req.params.id, req.user.id);
-    res.status(200).json({ status: 'success', data: { vaccines } });
-  });
+  getVaccines = asyncHandler(async (req, res) => {
+      const vaccines = await petService.getPetVaccines(req.params.id, req.user.id);
+      res.status(200).json({ status: 'success', data: { vaccines } });
+    });
 
   // ADICIONE ESTE:
   addVaccine = asyncHandler(async (req, res) => {
@@ -55,6 +56,21 @@ getVaccines = asyncHandler(async (req, res) => {
   // ── DELETE DOSE ESPECÍFICA
   deleteDose = asyncHandler(async (req, res) => {
     await petService.deleteDose(req.params.vaccineId, req.params.doseId, req.user.id);
+    res.status(204).send();
+  });
+
+  getRegistrosClinicos = asyncHandler(async (req, res) => {
+    const registros = await petService.getRegistrosClinicos(req.params.id, req.user.id);
+    res.status(200).json({ status: 'success', data: { registros } });
+  });
+
+  getVinculoClinica = asyncHandler(async (req, res) => {
+    const vinculo = await vinculoClinicaService.obterVinculoDoPet(req.params.id, req.user.id);
+    res.status(200).json({ status: 'success', data: vinculo });
+  });
+
+  desvincularClinica = asyncHandler(async (req, res) => {
+    await vinculoClinicaService.desvincular(req.params.id, req.user.id);
     res.status(204).send();
   });
 }

@@ -66,9 +66,6 @@ class ClubService {
       raioKm: raioKm || 30,
     });
 
-  console.log('DEBUG _count:', JSON.stringify(petShops[0]?._count, null, 2));
-  console.log('DEBUG cupons direto:', petShops[0]?.cupons);
-
     const [seguidores, favorito] = await Promise.all([
       prisma.petShopSeguidor.findMany({
         where: { userId },
@@ -76,7 +73,7 @@ class ClubService {
       }),
       prisma.petShopFavorito.findUnique({
         where: { userId },
-        select: { petShopId: true },
+        select: { petShopId: true, favoritadoEm: true },
       }),
     ]);
 
@@ -91,6 +88,8 @@ class ClubService {
             : null,
         seguindo: seguindoSet.has(ps.id),
         favorito: favorito?.petShopId === ps.id,
+        favoritadoEm:
+          favorito?.petShopId === ps.id ? favorito.favoritadoEm : null,
       }))
       .sort((a, b) => (a.distanciaKm ?? 999) - (b.distanciaKm ?? 999));
   }
@@ -101,12 +100,19 @@ class ClubService {
     if (!petShop.ativo || !petShop.planoAtivo)
       throw new AppError('Este pet shop não faz parte do Bitzy Club', 403);
 
-    const [seguindo, favorito, cupons] = await Promise.all([
+    const [seguindo, favorito, cupons, ofertas] = await Promise.all([
       prisma.petShopSeguidor.findUnique({
         where: { userId_petShopId: { userId, petShopId } },
       }),
       prisma.petShopFavorito.findUnique({ where: { userId } }),
       cupomRepository.findAtivosByPetShop(petShopId, userId),
+      prisma.ofertaProduto.findMany({
+        where: { petShopId, ativo: true },
+        include: {
+          petShop: { select: { id: true, nome: true, whatsapp: true, telefone: true } },
+        },
+        orderBy: [{ destaque: 'desc' }, { createdAt: 'desc' }],
+      }),
     ]);
 
     return {
@@ -114,6 +120,7 @@ class ClubService {
       seguindo: !!seguindo,
       favorito: favorito?.petShopId === petShopId,
       cupons,
+      ofertas,
     };
   }
 
@@ -536,6 +543,171 @@ class ClubService {
       where: { id: cupomId },
       data: { ativo: false },
     });
+  }
+
+  // ── GESTÃO DE PARCEIROS PELO ADMIN DO CRM ───────────────────────────────
+
+  /**
+   * Cria (ou atualiza, se já existir) o PetShop do Club a partir de um
+   * Petshop já cliente do CRM. Chamado pelo admin do CRM ao "Habilitar
+   * acesso ao app Bitzy" na tela de detalhe do petshop. Idempotente por
+   * crmPetshopId: repetir a chamada atualiza os dados em vez de duplicar.
+   */
+  async vincularPetShopDoCrm(dados) {
+    const { crmPetshopId, ...resto } = dados;
+    if (!crmPetshopId) throw new AppError('crmPetshopId é obrigatório.', 400);
+
+    const existente = await petShopRepository.buscarPorCrmPetshopId(crmPetshopId);
+
+    if (existente) {
+      return await petShopRepository.atualizar(existente.id, {
+        ...resto,
+        origem: 'CRM',
+        aprovado: true,
+      });
+    }
+
+    return await petShopRepository.criar({
+      ...resto,
+      crmPetshopId,
+      origem: 'CRM',
+      aprovado: true,
+      ativo: true,
+      planoAtivo: true,
+    });
+  }
+
+  /**
+   * Cria um PetShop direto no Club, sem nenhum vínculo a um tenant do CRM.
+   * Usado pelo admin para parceiros que só querem estar no app.
+   */
+  async criarPetShopDireto(dados) {
+    return await petShopRepository.criar({
+      ...dados,
+      origem: 'DIRETO',
+      aprovado: true,
+      ativo: true,
+      planoAtivo: true,
+    });
+  }
+
+  /**
+   * Atualiza dados públicos (endereço, descrição, contato, etc.) de
+   * qualquer PetShop, seja de origem CRM ou DIRETO. Usado pelo admin.
+   */
+  async atualizarPetShopAdmin(petShopId, dados) {
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    return await petShopRepository.atualizar(petShopId, dados);
+  }
+
+  /**
+   * Liga/desliga a visibilidade de um PetShop no app (nunca deleta —
+   * preserva seguidores, favoritos e histórico de cupons).
+   */
+  async alterarStatusPetShop(petShopId, ativo) {
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    return await petShopRepository.atualizar(petShopId, { ativo });
+  }
+
+  /**
+   * Lista PetShops de origem DIRETO — para a tela "Parceiros Bitzy Club"
+   * do admin (parceiros sem vínculo a nenhum tenant do CRM).
+   */
+  async listarPetShopsDiretos() {
+    return await petShopRepository.listarDiretos();
+  }
+
+  /**
+   * Detalhe completo de um PetShop para o admin (qualquer origem — CRM ou
+   * DIRETO). Usado tanto na edição do vínculo quanto na tela de parceiro.
+   */
+  async buscarPetShopAdmin(petShopId) {
+    const petShop = await petShopRepository.findByIdWithDetails(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    return petShop;
+  }
+
+  /**
+   * Lista todos os cupons de um PetShop (ativos e inativos) — usado pelo
+   * admin para gerenciar cupons de parceiros que não têm CRM próprio.
+   */
+  async listarCuponsAdmin(petShopId) {
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    return await this.listarCuponsPetShop(petShopId);
+  }
+
+  /**
+   * Cria um cupom direto por conta do admin, para um parceiro sem CRM
+   * próprio (reaproveita as mesmas regras de limite de criarCupom).
+   */
+  async criarCupomAdmin(petShopId, dados) {
+    return await this.criarCupom(petShopId, dados);
+  }
+
+  /**
+   * Edita um cupom existente de qualquer PetShop — usado pelo admin ao
+   * gerenciar cupons de parceiros sem CRM próprio.
+   */
+  async atualizarCupomAdmin(cupomId, dados) {
+    const cupom = await prisma.cupom.findUnique({ where: { id: cupomId } });
+    if (!cupom) throw new AppError('Cupom não encontrado', 404);
+    return await prisma.cupom.update({ where: { id: cupomId }, data: dados });
+  }
+
+  // ── PUBLICAÇÃO A PARTIR DO CRM ──────────────────────────────────────────
+
+  /**
+   * Cria ou atualiza um cupom no Club a partir de um cupom já existente no
+   * CRM (crm-pet-shop-backend). Idempotente por origemCrmCupomId: publicar
+   * de novo o mesmo cupom do CRM atualiza o registro existente, sem duplicar.
+   */
+  async publicarCupomDoCrm(petShopId, origemCrmCupomId, dados) {
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    if (!petShop.planoAtivo)
+      throw new AppError('Plano Bitzy Club inativo para este pet shop', 403);
+
+    const existente = await prisma.cupom.findUnique({ where: { origemCrmCupomId } });
+
+    if (existente) {
+      return await prisma.cupom.update({
+        where: { id: existente.id },
+        data: dados,
+      });
+    }
+
+    const totalAtivos = await prisma.cupom.count({ where: { petShopId, ativo: true } });
+    const limite = petShop.limiteCuponsAtivos ?? 10;
+    if (totalAtivos >= limite) {
+      throw new AppError(
+        `Este pet shop já atingiu o limite de ${limite} cupons ativos no Club.`,
+        409,
+      );
+    }
+
+    const cupom = await prisma.cupom.create({
+      data: { petShopId, origemCrmCupomId, ...dados },
+    });
+
+    const seguidores = await prisma.petShopSeguidor.findMany({
+      where: { petShopId },
+      select: { userId: true },
+    });
+    await Promise.allSettled(
+      seguidores.map((s) =>
+        notificationService.notificar(s.userId, {
+          titulo: `Novo benefício em ${petShop.nome}! 🚀`,
+          mensagem: cupom.titulo,
+          tipo: 'SISTEMA',
+          pathKey: `/clube/${petShopId}`,
+        }),
+      ),
+    );
+
+    return cupom;
   }
 
   // ── MÉTRICAS ──────────────────────────────────────────────────────────────

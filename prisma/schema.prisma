@@ -69,6 +69,7 @@ model User {
   petShopsSeguidores  PetShopSeguidor[]
   petShopFavorito     PetShopFavorito?
   cupomResgates       CupomResgate[]
+  ofertaCliques       OfertaClique[]
   pushToken           String?
   ultimoFavoritadoEm DateTime?
   
@@ -161,6 +162,8 @@ model Pet {
   analises AnaliseHistorico[]
   sosAtendimentos SosAtendimento[]
   vacinas Vacina[]
+  registrosClinicos RegistroClinicoApp[]
+  vinculosClinica VinculoClinicaPet[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -178,10 +181,61 @@ model Vacina {
   
   doses        DoseVacina[]
   observacoes   String?   @db.Text
+
+  // Preenchidos quando esta vacina veio de um registro feito pela clínica
+  // no CRM (crm-pet-shop-backend), via pet vinculado — ver VinculoClinicaPet.
+  // origemCrmRegistroId garante idempotência: reenviar o mesmo registro
+  // atualiza em vez de duplicar.
+  origemClinica       Boolean @default(false)
+  origemCrmRegistroId String? @unique
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@map("vacinas")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  VÍNCULO PET ↔ CLÍNICA (CRM)
+//  Criado quando o tutor confirma, via código, que um Pet do app
+//  corresponde a um Pet cadastrado numa clínica/petshop no CRM.
+// ─────────────────────────────────────────────────────────────
+model VinculoClinicaPet {
+  id           String   @id @default(uuid())
+
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  // Referências soltas ao CRM (banco diferente, sem FK real)
+  crmPetId     String
+  crmPetshopId String
+  crmPetshopNome String
+
+  vinculadoEm  DateTime @default(now())
+
+  @@unique([petId, crmPetId])
+  @@index([petId])
+  @@map("vinculos_clinica_pet")
+}
+
+// Código curto e temporário gerado pelo CRM para o tutor confirmar o
+// vínculo do pet no app. Expira sozinho (expiraEm) e é descartado após
+// uso (usadoEm) — evita reuso indevido do mesmo código.
+model CodigoVinculoClinica {
+  id           String   @id @default(uuid())
+  codigo       String   @unique // 6 dígitos, gerado pelo CRM
+
+  crmPetId       String
+  crmPetshopId   String
+  crmPetshopNome String
+  crmPetNome     String
+
+  criadoEm     DateTime @default(now())
+  expiraEm     DateTime
+  usadoEm      DateTime?
+  usadoPorUserId String?
+
+  @@map("codigos_vinculo_clinica")
 }
 
 model DoseVacina {
@@ -198,6 +252,47 @@ model DoseVacina {
   @@map("doses_vacinas")
 }
 
+model RegistroClinicoApp {
+  id           String   @id @default(uuid())
+
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  tipo         String   // CONSULTA, PROCEDIMENTO, EXAME, OBSERVACAO
+  data         DateTime
+  descricao    String   @db.Text
+  vetNome      String?
+  clinicaNome  String
+
+  origemClinica       Boolean @default(true)
+  origemCrmRegistroId String  @unique
+
+  anexos       AnexoRegistroClinicoApp[]
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([petId])
+  @@map("registros_clinicos_app")
+}
+
+model AnexoRegistroClinicoApp {
+  id                    String   @id @default(uuid())
+
+  registroClinicoAppId  String
+  registroClinicoApp    RegistroClinicoApp @relation(fields: [registroClinicoAppId], references: [id], onDelete: Cascade)
+
+  nomeArquivo  String
+  url          String
+  tipoArquivo  String
+
+  origemCrmAnexoId String @unique
+
+  criadoEm     DateTime @default(now())
+
+  @@index([registroClinicoAppId])
+  @@map("anexos_registro_clinico_app")
+}
 
 model Dica {
   id          String @id @default(uuid())
@@ -507,7 +602,6 @@ model PetShop {
   logoUrl       String?
   bannerUrl     String?
 
-  // Endereço / localização
   endereco      String
   cidade        String
   estado        String
@@ -515,22 +609,23 @@ model PetShop {
   latitude      Float
   longitude     Float
 
-  // Contato
   telefone      String?
   whatsapp      String?
   instagram     String?
   website       String?
 
-  // Plano Bitzy Club
+  crmPetshopId  String?  @unique
+
+  origem        PetShopOrigem @default(DIRETO)
+  aprovado      Boolean  @default(false)
+
   ativo         Boolean  @default(true)
   planoAtivo    Boolean  @default(false)
   planoInicioEm DateTime?
   planoFimEm    DateTime?
 
-  // Desconto fixo para quem FAVORITA (pet shop escolhe o %, mínimo 5%)
   descontoFavorito Float @default(10.0)
 
-  // Limite de cupons ativos por mês (padrão MVP = 10)
   limiteCuponsAtivos Int @default(10)
 
   createdAt     DateTime @default(now())
@@ -539,6 +634,7 @@ model PetShop {
   cupons        Cupom[]
   seguidores    PetShopSeguidor[]
   favoritos     PetShopFavorito[]
+  ofertas       OfertaProduto[]
 
   @@index([cidade, estado])
   @@index([latitude, longitude])
@@ -546,6 +642,10 @@ model PetShop {
   @@map("pet_shops")
 }
 
+enum PetShopOrigem {
+  CRM     // veio de um Petshop já cliente do CRM
+  DIRETO  // cadastrado direto pelo admin, sem vínculo ao CRM
+}
 
 // ─────────────────────────────────────────────────────────────
 //  SEGUIDOR DE PET SHOP
@@ -652,6 +752,12 @@ model Cupom {
   destaque       Boolean  @default(false)   // "botão destacar cupom"
   totalResgates  Int      @default(0)
 
+  // Preenchido quando este cupom foi publicado a partir de um cupom já
+  // existente no CRM (crm-pet-shop-backend) — permite atualizar o mesmo
+  // registro em vez de duplicar ao publicar de novo. Null = cupom nativo
+  // do Club, criado direto pelo dono no app/painel.
+  origemCrmCupomId String? @unique
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -663,6 +769,77 @@ model Cupom {
   @@index([dataFim])
   @@index([destaque, ativo])
   @@map("cupons")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  OFERTA DE PRODUTO
+//  Produto em destaque/promoção cadastrado pelo petshop (hoje,
+//  só via admin interno) e exibido na home do app.
+// ─────────────────────────────────────────────────────────────
+enum CategoriaOferta {
+  RACAO
+  ACESSORIOS
+  BANHO_TOSA
+  SAUDE
+  OUTROS
+}
+
+model OfertaProduto {
+  id            String   @id @default(uuid())
+
+  petShopId     String
+  petShop       PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  nome          String
+  fotoUrl       String
+  categoria     CategoriaOferta @default(OUTROS)
+
+  preco         Float
+  precoOriginal Float?
+
+  ativo         Boolean  @default(true)
+  destaque      Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cliques       OfertaClique[]
+
+  @@index([petShopId, ativo])
+  @@index([ativo, destaque])
+  @@map("ofertas_produtos")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CLIQUE EM OFERTA
+//  Registro de interação: usuário clicou no produto/WhatsApp.
+//  Guarda snapshots (petShopId, cidade/estado) porque o histórico
+//  precisa sobreviver mesmo se a oferta for apagada depois.
+// ─────────────────────────────────────────────────────────────
+model OfertaClique {
+  id              String        @id @default(uuid())
+
+  ofertaId        String
+  oferta          OfertaProduto @relation(fields: [ofertaId], references: [id], onDelete: Cascade)
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Snapshots — não usam FK viva de propósito, pra sobreviver mesmo se a
+  // oferta ou o petshop forem removidos depois.
+  petShopId       String
+  petShopNome     String
+  ofertaNome      String
+
+  cidadeSnapshot  String?
+  estadoSnapshot  String?
+
+  criadoEm        DateTime @default(now())
+
+  @@index([ofertaId])
+  @@index([petShopId, criadoEm])
+  @@index([userId])
+  @@map("ofertas_cliques")
 }
 
 

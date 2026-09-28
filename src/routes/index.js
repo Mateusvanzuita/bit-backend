@@ -10,6 +10,8 @@ const sosRoutes = require('./sosRoutes');
 const clubRoutes = require('./clubRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const adminRoutes = require('./adminRoutes');
+const internalRoutes = require('./internalRoutes');
+const vinculoClinicaRoutes = require('./vinculoClinicaRoutes');
 
 const router = express.Router();
 
@@ -34,5 +36,7 @@ router.use('/sos', sosRoutes);
 router.use('/club', clubRoutes);
 router.use('/notificacoes', notificationRoutes);
 router.use('/admin', adminRoutes);
+router.use('/internal', internalRoutes);
+router.use('/vinculo-clinica', vinculoClinicaRoutes);
 
 module.exports = router;

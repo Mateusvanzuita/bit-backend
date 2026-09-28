@@ -157,6 +157,12 @@ async deleteVaccine(vaccineId, userId) {
 
     await prisma.doseVacina.delete({ where: { id: doseId } });
   }
-}
+  
+  async getRegistrosClinicos(petId, userId) {
+      const pet = await petRepository.findByIdAndUser(petId, userId);
+      if (!pet) throw new AppError('Pet não encontrado ou acesso negado', 404);
+      return await petRepository.findRegistrosClinicosByPetId(petId);
+    }
+  }
 
 module.exports = new PetService();

@@ -1,5 +1,6 @@
 // src/services/aiService.js
 const OpenAI = require('openai');
+const { toFile } = require('openai');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -149,6 +150,43 @@ Tente fazer nova análise em alguns minutos. Desculpe pelo inconveniente!
     } catch (error) {
       console.error('❌ [IA] Erro na análise rápida:', error.message);
       return this.gerarRespostaFallback();
+    }
+  }
+
+    /**
+   * Transcreve um áudio (buffer em memória) para texto, usando Whisper.
+   * originalname/mimetype vêm do multer (req.file) e são usados só para
+   * dar um nome/extensão coerente ao arquivo enviado à OpenAI.
+   */
+  async transcreverAudio(buffer, originalname, mimetype) {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('❌ OPENAI_API_KEY não está definida no .env');
+      }
+
+      console.log('🎙️  [IA] Transcrevendo áudio:', {
+        nome: originalname,
+        tipo: mimetype,
+        tamanhoKB: Math.round(buffer.length / 1024),
+      });
+
+      const arquivo = await toFile(buffer, originalname || 'audio.m4a', { type: mimetype });
+
+      const resposta = await openai.audio.transcriptions.create(
+        {
+          file: arquivo,
+          model: 'whisper-1',
+          language: 'pt', // acelera e melhora a precisão, já que o app é PT-BR
+        },
+        { timeout: 60000 }, // áudio maior pode levar mais que os 30s padrão
+      );
+
+      console.log('✅ [IA] Áudio transcrito com sucesso.');
+
+      return resposta.text;
+    } catch (error) {
+      console.error('❌ [IA] Erro ao transcrever áudio:', error.message);
+      throw new Error('Não foi possível transcrever o áudio agora. Tente novamente.');
     }
   }
 

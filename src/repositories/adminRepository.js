@@ -35,6 +35,9 @@ class AdminRepository extends BaseRepository {
       planoFimEm: true,
       descontoFavorito: true,
       limiteCuponsAtivos: true,
+      crmPetshopId: true,
+      origem: true,
+      aprovado: true,
       createdAt: true,
       updatedAt: true,
       _count: {

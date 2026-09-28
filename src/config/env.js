@@ -13,4 +13,8 @@ module.exports = {
       ? process.env.ALLOWED_ORIGINS.split(',') 
       : ['http://localhost:19006', 'http://localhost:5173', 'http://localhost:5174'],
   },
+  // Chave compartilhada para chamadas servidor-a-servidor vindas do
+  // crm-pet-shop-backend (ex: consultar métricas do Bitzy Club a partir
+  // do CRM). Nunca é exposta a clientes finais — ver middlewares/internalAuth.js.
+  internalApiKey: process.env.INTERNAL_API_KEY || '',
 };

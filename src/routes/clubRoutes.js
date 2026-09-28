@@ -1,6 +1,7 @@
 // src/routes/clubRoutes.js
 const express = require('express');
 const clubController = require('../controllers/clubController');
+const ofertaController = require('../controllers/ofertaController');
 const authMiddleware = require('../middlewares/auth');
 const validate = require('../middlewares/validate');
 const {
@@ -135,6 +136,20 @@ router.patch(
 router.delete(
   '/petshops/:petShopId/cupons/:cupomId',
   clubController.desativarCupom,
+);
+
+// ── OFERTAS DE PRODUTOS ────────────────────────────────────────────────────
+
+// Feed de ofertas disponíveis para a home do app (cidade/estado do usuário)
+router.get(
+  '/ofertas',
+  ofertaController.listar,
+);
+
+// Registra o clique/interação e retorna o WhatsApp do petshop para o app abrir
+router.post(
+  '/ofertas/:id/clique',
+  ofertaController.registrarClique,
 );
 
 // ── MÉTRICAS DO PET SHOP ──────────────────────────────────────────────────

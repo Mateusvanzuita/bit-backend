@@ -29,6 +29,7 @@ class PetShopRepository extends BaseRepository {
     const where = {
       ativo: true,
       planoAtivo: true,
+      aprovado: true,
     };
 
     if (latitude != null && longitude != null) {
@@ -149,6 +150,9 @@ class PetShopRepository extends BaseRepository {
       planoFimEm: true,
       descontoFavorito: true,
       limiteCuponsAtivos: true,
+      crmPetshopId: true,
+      origem: true,
+      aprovado: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -172,6 +176,35 @@ async atualizar(id, dados) {
 
 async deletar(id) {
   return await prisma.petShop.delete({ where: { id } });
+}
+
+async buscarPorCrmPetshopId(crmPetshopId) {
+  return await prisma.petShop.findUnique({ where: { crmPetshopId } });
+}
+
+async listarDiretos() {
+  return await prisma.petShop.findMany({
+    where: { origem: 'DIRETO' },
+    select: {
+      id: true,
+      nome: true,
+      descricao: true,
+      logoUrl: true,
+      cidade: true,
+      estado: true,
+      ativo: true,
+      aprovado: true,
+      createdAt: true,
+      _count: {
+        select: {
+          seguidores: true,
+          favoritos: true,
+          cupons: { where: { ativo: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 }
 
