@@ -3,6 +3,7 @@ const express = require('express');
 const analiseController = require('../controllers/analiseController');
 const authMiddleware = require('../middlewares/auth');
 const { aiLimiter } = require('../middlewares/rateLimiter');
+const requireConsentimentoIA = require('../middlewares/requireConsentimentoIA');
 
 const router = express.Router();
 
@@ -14,6 +15,11 @@ router.get('/historico/:historicoId', analiseController.getHistorico);
 router.get('/:id', analiseController.show);
 
 // Submissão chama IA — limitada por usuário
-router.post('/:id/submit', aiLimiter, analiseController.submit);
+router.post(
+  '/:id/submit',
+  requireConsentimentoIA,
+  aiLimiter,
+  analiseController.submit,
+);
 
 module.exports = router;

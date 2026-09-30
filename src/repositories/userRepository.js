@@ -56,6 +56,8 @@ class UserRepository extends BaseRepository {
         cidade: true,
         estado: true,
         pais: true,
+        consentimentoIA: true,
+        consentimentoIAEm: true,
       },
     });
   }

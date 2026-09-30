@@ -29,6 +29,11 @@ router.post('/reset-password',    authLimiter, resetPasswordValidator,    valida
 // ── Rotas protegidas ────────────────────────────────────────
 router.get('/profile',         authMiddleware, authController.getProfile);
 router.put('/profile',         authMiddleware, authController.updateProfile);
+router.patch(
+  '/consentimento-ia',
+  authMiddleware,
+  authController.updateConsentimentoIA,
+);
 router.patch('/change-password', authMiddleware, authController.changePassword);
 router.patch('/location',      authMiddleware, authController.updateLocation);
 router.patch('/push-token',    authMiddleware, authController.updatePushToken);

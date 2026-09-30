@@ -4,15 +4,34 @@ const sosController = require('../controllers/sosController');
 const authMiddleware = require('../middlewares/auth');
 const { aiLimiter } = require('../middlewares/rateLimiter');
 const { uploadAudioSingle } = require('../middlewares/uploadMiddleware');
+const requireConsentimentoIA = require('../middlewares/requireConsentimentoIA');
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
 // Rotas que chamam IA — limitadas por usuário
-router.post('/',             aiLimiter, sosController.create);
-router.post('/:id/mensagem', aiLimiter, sosController.adicionarMensagem);
-router.post('/transcrever',  aiLimiter, uploadAudioSingle, sosController.transcrever);
+router.post(
+  '/',
+  requireConsentimentoIA,
+  aiLimiter,
+  sosController.create,
+);
+
+router.post(
+  '/:id/mensagem',
+  requireConsentimentoIA,
+  aiLimiter,
+  sosController.adicionarMensagem,
+);
+
+router.post(
+  '/transcrever',
+  requireConsentimentoIA,
+  aiLimiter,
+  uploadAudioSingle,
+  sosController.transcrever,
+);
 
 // Rotas de leitura — sem limiter de IA
 router.get('/:id',           sosController.show);

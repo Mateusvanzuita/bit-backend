@@ -24,6 +24,20 @@ class AuthController {
     res.status(200).json({ status: 'success', data: { user: updatedUser } });
   });
 
+  updateConsentimentoIA = asyncHandler(async (req, res) => {
+    const { consentimento } = req.body;
+
+    const updatedUser = await authService.updateConsentimentoIA(
+      req.user.id,
+      consentimento,
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { user: updatedUser },
+    });
+  });
+
   changePassword = asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     await authService.changePassword(req.user.id, currentPassword, newPassword);

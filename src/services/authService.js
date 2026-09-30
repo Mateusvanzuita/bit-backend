@@ -54,7 +54,7 @@ class AuthService {
     const user = await userRepository.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
-    const { password: _, ...userWithoutPassword } = user;
+    const { senha: _, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
 
@@ -67,6 +67,23 @@ class AuthService {
 
     Object.keys(data).forEach((key) => data[key] === undefined && delete data[key]);
     return await userRepository.update(userId, data);
+  }
+
+  async updateConsentimentoIA(userId, consentimento) {
+    if (typeof consentimento !== 'boolean') {
+      throw new AppError('O consentimento deve ser verdadeiro ou falso.', 400);
+    }
+
+    const user = await userRepository.findById(userId);
+
+    if (!user) {
+      throw new AppError('Usuário não encontrado', 404);
+    }
+
+    return await userRepository.update(userId, {
+      consentimentoIA: consentimento,
+      consentimentoIAEm: consentimento ? new Date() : null,
+    });
   }
 
   async changePassword(userId, currentPassword, newPassword) {
