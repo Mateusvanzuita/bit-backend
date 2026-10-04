@@ -1,18 +1,32 @@
 const ofertaRepository = require('../repositories/ofertaRepository');
 const { AppError } = require('../middlewares/errorHandler');
+const { selecionarPonderado } = require('../utils/rodizioPonderado');
 
 class OfertaService {
   // ── App do tutor ───────────────────────────────────────────
 
-  async listarParaApp({ cidade, estado }) {
-    const ofertas = await ofertaRepository.listarAtivasProximas({ cidade, estado });
-    return ofertas.map((o) => ({
+  async listarParaApp({ cidade, estado, destaques = false, limite = 20 }) {
+    const ofertas = await ofertaRepository.listarAtivasProximas({
+      cidade,
+      estado,
+      limite: destaques ? 100 : limite,
+    });
+
+    const selecionadas = destaques
+      ? selecionarPonderado(ofertas, limite)
+      : ofertas;
+
+    return selecionadas.map((o) => ({
       id: o.id,
       nome: o.nome,
       fotoUrl: o.fotoUrl,
       preco: o.preco,
       precoOriginal: o.precoOriginal,
-      petShop: { id: o.petShop.id, nome: o.petShop.nome, whatsapp: o.petShop.whatsapp },
+      petShop: {
+        id: o.petShop.id,
+        nome: o.petShop.nome,
+        whatsapp: o.petShop.whatsapp,
+      },
     }));
   }
 
@@ -46,11 +60,33 @@ class OfertaService {
   }
 
   async criar(petShopId, dados) {
-    return ofertaRepository.criar({ petShopId, ...dados });
+    const pesoDestaque = Number(dados.pesoDestaque ?? 1);
+
+    if (![1, 2].includes(pesoDestaque)) {
+      throw new AppError('pesoDestaque deve ser 1 ou 2.', 400);
+    }
+
+    return ofertaRepository.criar({
+      petShopId,
+      ...dados,
+      pesoDestaque,
+    });
   }
 
   async atualizar(id, dados) {
-    return ofertaRepository.atualizar(id, dados);
+    const dadosAtualizacao = { ...dados };
+
+    if (dados.pesoDestaque !== undefined) {
+      const pesoDestaque = Number(dados.pesoDestaque);
+
+      if (![1, 2].includes(pesoDestaque)) {
+        throw new AppError('pesoDestaque deve ser 1 ou 2.', 400);
+      }
+
+      dadosAtualizacao.pesoDestaque = pesoDestaque;
+    }
+
+    return ofertaRepository.atualizar(id, dadosAtualizacao);
   }
 
   async remover(id) {

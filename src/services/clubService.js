@@ -4,6 +4,7 @@ const petShopRepository = require('../repositories/petShopRepository');
 const cupomRepository = require('../repositories/cupomRepository');
 const cupomResgateRepository = require('../repositories/cupomResgateRepository');
 const notificationService = require('./notificationService');
+const { selecionarPonderado } = require('../utils/rodizioPonderado');
 const { AppError } = require('../middlewares/errorHandler');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -57,7 +58,10 @@ class ClubService {
 
   // ── PET SHOPS ──────────────────────────────────────────────────────────────
 
-  async listarPetShops(userId, { latitude, longitude, cidade, estado, raioKm }) {
+  async listarPetShops(
+    userId,
+    { latitude, longitude, cidade, estado, raioKm, destaques = false, limite = 5 }
+  ) {
     const petShops = await petShopRepository.findNearby({
       latitude,
       longitude,
@@ -79,12 +83,19 @@ class ClubService {
 
     const seguindoSet = new Set(seguidores.map((s) => s.petShopId));
 
-    return petShops
+    const resultado = petShops
       .map((ps) => ({
         ...ps,
         distanciaKm:
-          latitude && longitude
-            ? Number(calcDistanciaKm(latitude, longitude, ps.latitude, ps.longitude).toFixed(1))
+          latitude != null && longitude != null
+            ? Number(
+                calcDistanciaKm(
+                  latitude,
+                  longitude,
+                  ps.latitude,
+                  ps.longitude
+                ).toFixed(1)
+              )
             : null,
         seguindo: seguindoSet.has(ps.id),
         favorito: favorito?.petShopId === ps.id,
@@ -92,6 +103,10 @@ class ClubService {
           favorito?.petShopId === ps.id ? favorito.favoritadoEm : null,
       }))
       .sort((a, b) => (a.distanciaKm ?? 999) - (b.distanciaKm ?? 999));
+
+    return destaques
+      ? selecionarPonderado(resultado, limite)
+      : resultado;
   }
 
   async detalhesPetShop(petShopId, userId) {
@@ -642,8 +657,15 @@ class ClubService {
    * Usado pelo admin para parceiros que só querem estar no app.
    */
   async criarPetShopDireto(dados) {
+    const pesoDestaque = Number(dados.pesoDestaque ?? 1);
+
+    if (![1, 2].includes(pesoDestaque)) {
+      throw new AppError('pesoDestaque deve ser 1 ou 2.', 400);
+    }
+
     return await petShopRepository.criar({
       ...dados,
+      pesoDestaque,
       origem: 'DIRETO',
       aprovado: true,
       ativo: true,
@@ -657,8 +679,27 @@ class ClubService {
    */
   async atualizarPetShopAdmin(petShopId, dados) {
     const petShop = await petShopRepository.findById(petShopId);
-    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
-    return await petShopRepository.atualizar(petShopId, dados);
+
+    if (!petShop) {
+      throw new AppError('Pet shop não encontrado', 404);
+    }
+
+    const dadosAtualizacao = { ...dados };
+
+    if (dados.pesoDestaque !== undefined) {
+      const pesoDestaque = Number(dados.pesoDestaque);
+
+      if (![1, 2].includes(pesoDestaque)) {
+        throw new AppError('pesoDestaque deve ser 1 ou 2.', 400);
+      }
+
+      dadosAtualizacao.pesoDestaque = pesoDestaque;
+    }
+
+    return await petShopRepository.atualizar(
+      petShopId,
+      dadosAtualizacao
+    );
   }
 
   /**

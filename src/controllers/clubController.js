@@ -7,17 +7,37 @@ class ClubController {
   // ── PET SHOPS ──────────────────────────────────────────────────────────────
 
   // GET /club/petshops
-  // Query: latitude, longitude, cidade, estado, raioKm
+  // Query: latitude, longitude, cidade, estado, raioKm, destaques, limite
   listarPetShops = asyncHandler(async (req, res) => {
-    const { latitude, longitude, cidade, estado, raioKm } = req.query;
+    const {
+      latitude,
+      longitude,
+      cidade,
+      estado,
+      raioKm,
+      destaques,
+      limite,
+    } = req.query;
+
+    const limiteSolicitado = Number.parseInt(limite, 10);
+    const limiteNormalizado = Number.isFinite(limiteSolicitado)
+      ? Math.min(Math.max(limiteSolicitado, 1), 20)
+      : 5;
+
     const petShops = await clubService.listarPetShops(req.user.id, {
       latitude: latitude ? parseFloat(latitude) : undefined,
       longitude: longitude ? parseFloat(longitude) : undefined,
       cidade,
       estado,
       raioKm: raioKm ? parseFloat(raioKm) : undefined,
+      destaques: destaques === 'true',
+      limite: limiteNormalizado,
     });
-    res.status(200).json({ status: 'success', data: { petShops } });
+
+    res.status(200).json({
+      status: 'success',
+      data: { petShops },
+    });
   });
 
   // GET /club/petshops/:petShopId

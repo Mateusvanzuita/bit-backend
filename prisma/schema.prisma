@@ -627,6 +627,8 @@ model PetShop {
   planoInicioEm DateTime?
   planoFimEm    DateTime?
 
+  pesoDestaque Int @default(1)
+
   descontoFavoritoAtivo Boolean @default(false)
   descontoFavorito      Float   @default(10.0)
 
@@ -803,6 +805,8 @@ model OfertaProduto {
 
   ativo         Boolean  @default(true)
   destaque      Int      @default(0)
+
+  pesoDestaque Int @default(1)
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

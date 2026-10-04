@@ -78,6 +78,7 @@ class PetShopRepository extends BaseRepository {
         whatsapp: true,
         instagram: true,
         descontoFavoritoAtivo: true,
+        pesoDestaque: true,
         descontoFavorito: true,
         _count: {
           select: {
@@ -154,6 +155,7 @@ class PetShopRepository extends BaseRepository {
       crmPetshopId: true,
       origem: true,
       aprovado: true,
+      pesoDestaque: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -195,6 +197,7 @@ async listarDiretos() {
       estado: true,
       ativo: true,
       aprovado: true,
+      pesoDestaque: true,
       descontoFavoritoAtivo: true,
       descontoFavorito: true,
       createdAt: true,

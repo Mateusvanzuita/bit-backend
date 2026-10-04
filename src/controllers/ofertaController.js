@@ -7,9 +7,18 @@ class OfertaController {
   listar = asyncHandler(async (req, res) => {
     const user = await userRepository.findById(req.user.id);
 
+    const destaques = req.query.destaques === 'true';
+
+    const limiteSolicitado = Number.parseInt(req.query.limite, 10);
+    const limite = Number.isFinite(limiteSolicitado)
+      ? Math.min(Math.max(limiteSolicitado, 1), 20)
+      : 20;
+
     const ofertas = await ofertaService.listarParaApp({
       cidade: user?.cidade,
       estado: user?.estado,
+      destaques,
+      limite,
     });
 
     res.status(200).json({ status: 'success', data: { ofertas } });
