@@ -3,6 +3,7 @@ const express = require('express');
 const adminController = require('../controllers/adminController');
 const { authAdmin, requireRole } = require('../middlewares/authAdmin');
 const asyncHandler = require('../utils/asyncHandler');
+const adocaoAdminRoutes = require('./adocaoAdminRoutes');
 
 const router = express.Router();
 
@@ -45,5 +46,8 @@ router.patch('/sos-prompt/:promptId/ativar', adminController.ativarVersaoPrompt)
 
 // ── NOTIFICAÇÃO BROADCAST ─────────────────────────────────────────────────
 router.post('/notificacoes/broadcast', requireRole('SUPER_ADMIN'), adminController.broadcast);
+
+// ── ADOÇÃO / ONGs (cadastro de ONGs e animais, interesses, ajudas, denúncias) ──
+router.use('/adocao', adocaoAdminRoutes);
 
 module.exports = router;

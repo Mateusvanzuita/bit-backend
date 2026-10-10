@@ -17,6 +17,11 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, config.jwt.secret);
 
+   // Tokens de admin (type:'admin') e de ONG (type:'ong') nunca valem como usuário do app.
+   if (decoded.type) {
+     return next(new AppError('Invalid token. Please log in again!', 401));
+   }
+
     // Attach user to request
     req.user = decoded;
     next();

@@ -12,6 +12,8 @@ const notificationRoutes = require('./notificationRoutes');
 const adminRoutes = require('./adminRoutes');
 const internalRoutes = require('./internalRoutes');
 const vinculoClinicaRoutes = require('./vinculoClinicaRoutes');
+const adocaoRoutes = require('./adocaoRoutes');
+const ongPortalRoutes = require('./ongPortalRoutes');
 
 const router = express.Router();
 
@@ -38,5 +40,7 @@ router.use('/notificacoes', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/internal', internalRoutes);
 router.use('/vinculo-clinica', vinculoClinicaRoutes);
+router.use('/adocao', adocaoRoutes);
+router.use('/ong-portal', ongPortalRoutes);
 
 module.exports = router;

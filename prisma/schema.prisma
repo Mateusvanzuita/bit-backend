@@ -73,6 +73,11 @@ model User {
   petShopFavorito     PetShopFavorito?
   cupomResgates       CupomResgate[]
   ofertaCliques       OfertaClique[]
+  interessesAdocao    InteresseAdocao[]
+  favoritosAnimais    FavoritoAnimal[]
+  alertasAdocao       AlertaAdocao[]
+  denunciasAnimais    DenunciaAnimal[]
+  ajudasOng           AjudaOng[]
   pushToken           String?
   ultimoFavoritadoEm DateTime?
   
@@ -1011,4 +1016,392 @@ enum Convivencia {
 enum TipoSalvo {
   ANALISE
   DICA
+}
+
+// ============================================================
+//  ADOÇÃO / ONGs — cole ESTE bloco no final do schema.prisma
+//  (e as relações do User, descritas no PATCHES-BACKEND.md)
+//
+//  Reaproveita os enums que já existem: Especie, SexoPet, Porte,
+//  Comportamento e Convivencia (mesmo vocabulário do Pet — a
+//  conversão "animal adotado → pet" fica quase 1:1).
+// ============================================================
+
+enum TipoOng {
+  ONG
+  PROTETOR
+}
+
+enum TipoChavePix {
+  CPF_CNPJ
+  EMAIL
+  TELEFONE
+  ALEATORIA
+}
+
+enum FaseVida {
+  FILHOTE
+  ADULTO
+  IDOSO
+}
+
+enum StatusAnimalAdocao {
+  DISPONIVEL
+  EM_PROCESSO
+  ADOTADO
+  INDISPONIVEL
+}
+
+// ENCERRADO não é gravado: o app recebe ENCERRADO quando o animal foi adotado/
+// ficou indisponível ou quando a ONG recusou (RECUSADO).
+enum StatusInteresse {
+  ENVIADO
+  EM_CONTATO
+  CANCELADO
+  RECUSADO
+  ADOCAO_CONFIRMADA
+}
+
+enum TipoAjuda {
+  APADRINHAR
+  ITENS
+  VOLUNTARIADO
+  DOACAO_FINANCEIRA
+}
+
+enum StatusAjuda {
+  ENVIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum MotivoDenuncia {
+  JA_ADOTADO
+  INFO_FALSA
+  COBRANCA_INDEVIDA
+  MAUS_TRATOS
+  OUTRO
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ONG / PROTETOR  (cadastrada pelo admin; sem painel próprio por enquanto)
+// ─────────────────────────────────────────────────────────────
+model Ong {
+  id            String   @id @default(uuid())
+
+  nome          String
+  tipo          TipoOng  @default(ONG)
+  descricao     String   @db.Text
+  logoUrl       String?
+  bannerUrl     String?
+
+  // Localização APROXIMADA. Para protetores/lar temporário: só bairro/cidade,
+  // nunca endereço exato (a API pública nem devolve latitude/longitude).
+  cidade        String
+  estado        String
+  bairro        String?
+  latitude      Float?
+  longitude     Float?
+
+  whatsapp      String?
+  instagramUrl  String?
+  siteUrl       String?
+
+  // Só ONGs verificadas exibem PIX e o selo no app.
+  verificada    Boolean  @default(false)
+  ativa         Boolean  @default(true)
+
+  // Processo de adoção
+  cidadesAtendidas String[]            // vazio = adota para qualquer cidade
+  processoAdocao   String[]            // etapas em ordem
+  taxaAdocao       String?
+
+  // ── Como ajudar ───────────────────────────────────────────
+  pixChave         String?
+  pixTipoChave     TipoChavePix?
+  pixTitular       String?
+  entregaDoacoes   String?             // onde/quando entregar itens
+  // [{ id, titulo, quantidade?, prioridade: "URGENTE"|"NORMAL" }]
+  necessidades     Json     @default("[]")
+  // [{ id, titulo, frequencia? }]
+  voluntariado     Json     @default("[]")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  animais       AnimalAdocao[]
+  interesses    InteresseAdocao[]
+  ajudas        AjudaOng[]
+  usuarios OngUsuario[]
+
+  @@index([cidade, estado])
+  @@index([ativa, verificada])
+  @@map("ongs")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ANIMAL PARA ADOÇÃO
+// ─────────────────────────────────────────────────────────────
+model AnimalAdocao {
+  id            String   @id @default(uuid())
+
+  ongId         String
+  ong           Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  nome          String
+  especie       Especie
+  sexo          SexoPet
+  porte         Porte
+  faseVida      FaseVida?
+  idadeMeses    Int?               // aproximada; null = desconhecida
+  raca          String?            // null = SRD
+  cor           String?
+  pesoKg        Float?
+
+  fotos         String[]
+  historia      String   @db.Text
+
+  temperamento                Comportamento[]
+  convivencia                 Convivencia[]   // convive bem com...
+  convivenciaNaoRecomendada   Convivencia[]
+
+  // null = não informado
+  castrado      Boolean?
+  vacinado      Boolean?
+  vermifugado   Boolean?
+  necessidadesEspeciais String? @db.Text
+  larTemporario Boolean  @default(false)
+
+  // [{ nome, categoria: "vaccine"|"dewormer"|"other", dataAplicacao, proximaDose?, observacoes? }]
+  vacinas       Json     @default("[]")
+
+  // Apadrinhamento (ajuda mensal combinada com a ONG, sem pagamento no app)
+  apadrinhamentoAtivo          Boolean @default(false)
+  apadrinhamentoValorSugerido  Float?
+  apadrinhamentoCobre          String?
+
+  status        StatusAnimalAdocao @default(DISPONIVEL)
+  publicado     Boolean  @default(true)    // false = rascunho (não aparece no app)
+  publicadoEm   DateTime?
+  adotadoEm     DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  interesses    InteresseAdocao[]
+  favoritos     FavoritoAnimal[]
+  denuncias     DenunciaAnimal[]
+  ajudas        AjudaOng[]
+
+  @@index([ongId, status])
+  @@index([publicado, status])
+  @@index([especie, porte])
+  @@index([publicadoEm])
+  @@map("animais_adocao")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  INTERESSE ("Quero conhecer")
+//  Não é adoção: a ONG conduz entrevista/critérios por fora.
+// ─────────────────────────────────────────────────────────────
+model InteresseAdocao {
+  id          String   @id @default(uuid())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  animalId    String
+  animal      AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  ongId       String
+  ong         Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  status      StatusInteresse @default(ENVIADO)
+
+  // { moradia, temCriancas, temOutrosPets, experiencia, mensagem? }
+  respostas   Json
+
+  // Prova do aceite (LGPD): o usuário autorizou compartilhar nome/contato/respostas com a ONG.
+  consentimentoEm DateTime
+
+  // Preenchido quando o tutor adiciona o animal adotado aos "Meus pets".
+  // Referência solta (sem FK) para não acoplar a exclusão de pets.
+  petCadastradoId String?
+
+  canceladoEm DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([animalId, status])
+  @@index([ongId, status])
+  @@map("interesses_adocao")
+}
+
+model FavoritoAnimal {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  animalId  String
+  animal    AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, animalId])
+  @@index([userId])
+  @@map("favoritos_animais")
+}
+
+// "Avise-me quando chegar um assim"
+model AlertaAdocao {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  especie   Especie?
+  porte     Porte?
+  faseVida  FaseVida?
+  sexo      SexoPet?
+  cidade    String?
+  estado    String?
+
+  ultimoAvisoEm DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("alertas_adocao")
+}
+
+model DenunciaAnimal {
+  id        String   @id @default(uuid())
+
+  animalId  String
+  animal    AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  motivo    MotivoDenuncia
+  detalhe   String?  @db.Text
+  resolvida Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([animalId, resolvida])
+  @@index([resolvida, createdAt])
+  @@map("denuncias_animais")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  AJUDA À ONG (apadrinhar, doar itens, voluntariado, PIX)
+//  Sem pagamento no app: é a INTENÇÃO registrada; a ONG combina por fora.
+// ─────────────────────────────────────────────────────────────
+model AjudaOng {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ongId     String
+  ong       Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  tipo      TipoAjuda
+  status    StatusAjuda @default(ENVIADA)
+
+  animalId  String?
+  animal    AnimalAdocao? @relation(fields: [animalId], references: [id], onDelete: SetNull)
+
+  itens          String[]
+  atividades     String[]
+  valorMensal    Float?
+  valorDoado     Float?
+  disponibilidade String?
+  mensagem       String?  @db.Text
+
+  consentimentoEm DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([ongId, status])
+  @@index([animalId, tipo, status])
+  @@map("ajudas_ong")
+}
+
+enum StatusOngUsuario {
+  CONVIDADO   // convite enviado, senha ainda não definida
+  ATIVO
+  BLOQUEADO
+}
+
+model OngUsuario {
+  id        String @id @default(uuid())
+
+  ongId     String
+  ong       Ong    @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  nome      String
+  email     String @unique
+  senhaHash String?                       // null até o primeiro acesso
+
+  status    StatusOngUsuario @default(CONVIDADO)
+
+  // O token do convite NUNCA é guardado puro: só o hash (sha256).
+  conviteTokenHash String?   @unique
+  conviteExpiraEm  DateTime?
+  conviteEnviadoEm DateTime?
+
+  ultimoLoginEm DateTime?
+  criadoPor     String?
+
+  refreshTokens OngRefreshToken[]
+  resetTokens   OngResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ongId])
+  @@map("ong_usuarios")
+}
+
+// Refresh token com ROTAÇÃO. Só o hash é guardado. Todos os tokens de uma mesma sessão
+// compartilham `familiaId`: se um token já usado reaparecer (roubo), a família inteira é revogada.
+model OngRefreshToken {
+  id         String @id @default(uuid())
+  usuarioId  String
+  usuario    OngUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  familiaId  String
+  tokenHash  String   @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?   // preenchido quando foi trocado por um novo
+  revogadoEm DateTime?
+
+  createdAt  DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([familiaId])
+  @@index([expiraEm])
+  @@map("ong_refresh_tokens")
+}
+
+// "Esqueci minha senha": link de uso único, vale 1 hora, só o hash é guardado.
+model OngResetToken {
+  id         String @id @default(uuid())
+  usuarioId  String
+  usuario    OngUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tokenHash  String   @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+
+  createdAt  DateTime @default(now())
+
+  @@index([usuarioId])
+  @@map("ong_reset_tokens")
 }

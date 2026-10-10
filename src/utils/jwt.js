@@ -14,8 +14,13 @@ const verifyToken = (token) => {
 };
 
 // Decodifica sem verificar expiração — usado para renovação silenciosa
-const decodeToken = (token) => {
-  return jwt.decode(token);
-};
+   const decodeToken = (token) => {
+     try {
+       const decoded = jwt.verify(token, config.jwt.secret, { ignoreExpiration: true });
+       return decoded.type ? null : decoded;
+     } catch {
+       return null;
+     }
+  };
 
 module.exports = { generateToken, verifyToken, decodeToken };

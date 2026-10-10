@@ -1,0 +1,199 @@
+
+
+---
+## src/routes/internalRoutes.js
+---
+
+const express = require('express');
+const internalController = require('../controllers/internalController');
+const { authenticateInternal } = require('../middlewares/internalAuth');
+const { uploadSingle } = require('../middlewares/uploadMiddleware');
+
+const router = express.Router();
+
+router.use(authenticateInternal);
+
+router.get('/petshops/by-crm/:crmPetshopId/metricas', internalController.metricasPorCrmPetshopId);
+router.post('/petshops/by-crm/:crmPetshopId/cupons', internalController.publicarCupom);
+router.post('/vinculo-clinica/gerar-codigo', internalController.gerarCodigoVinculo);
+router.post('/vinculo-clinica/sincronizar-vacina', internalController.sincronizarVacina);
+router.post('/vinculo-clinica/sincronizar-registro', internalController.sincronizarRegistroClinico);
+router.post('/vinculo-clinica/sincronizar-anexo', internalController.sincronizarAnexo);
+
+// ── Gestão de parceiros pelo admin do CRM ──────────────────────────────────
+router.post('/petshops/from-crm', internalController.vincularPetShopDoCrm);
+router.post('/petshops/direto', internalController.criarPetShopDireto);
+router.get('/petshops/direto', internalController.listarPetShopsDiretos);
+router.get('/petshops/:id', internalController.buscarPetShop);
+router.patch('/petshops/:id', internalController.atualizarPetShop);
+router.patch('/petshops/:id/status', internalController.alterarStatusPetShop);
+router.get('/petshops/:id/cupons', internalController.listarCuponsDoPetShop);
+router.post('/petshops/:id/cupons/admin', internalController.criarCupomAdmin);
+router.patch('/cupons/:cupomId', internalController.atualizarCupomAdmin);
+
+// ── Ofertas de produtos ─────────────────────────────────────────────────
+router.get('/petshops/:id/ofertas', internalController.listarOfertasDoPetShop);
+router.post('/petshops/:id/ofertas', internalController.criarOferta);
+router.patch('/ofertas/:ofertaId', internalController.atualizarOferta);
+router.delete('/ofertas/:ofertaId', internalController.removerOferta);
+router.get('/ofertas/cliques', internalController.listarCliques);
+router.post('/ofertas/upload-foto', uploadSingle, internalController.uploadFotoOferta);
+
+module.exports = router;
+
+
+---
+## src/middlewares/internalAuth.js
+---
+
+const env = require('../config/env');
+const { AppError } = require('./errorHandler');
+
+/**
+ * Protege rotas de comunicação servidor-a-servidor (ex: o CRM consultando
+ * métricas do Bitzy Club). Não é autenticação de usuário — exige um header
+ * com uma chave secreta compartilhada entre os dois backends, nunca exposta
+ * a clientes finais (app ou browser).
+ */
+function authenticateInternal(req, res, next) {
+  const chaveRecebida = req.headers['x-internal-api-key'];
+
+  if (!env.internalApiKey) {
+    return next(new AppError('INTERNAL_API_KEY não configurada no servidor.', 500));
+  }
+
+  if (!chaveRecebida || chaveRecebida !== env.internalApiKey) {
+    return next(new AppError('Não autorizado.', 401));
+  }
+
+  next();
+}
+
+module.exports = { authenticateInternal };
+
+
+---
+## src/services/emailService.js
+---
+
+// src/services/emailService.js
+const { Resend } = require('resend');
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const FROM_EMAIL = 'Bitzy <noreply@bitzy.pet>';
+
+const emailService = {
+  async sendPasswordResetCode(toEmail, userName, code) {
+    console.log(`📧 Tentando enviar email para: ${toEmail}`);
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: toEmail,
+      subject: 'Seu código de redefinição de senha - Bitzy',
+      html: `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+          <title>Redefinição de Senha</title>
+        </head>
+        <body style="margin:0;padding:0;background:#F3F4F6;font-family:'Segoe UI',Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6;padding:40px 0;">
+            <tr>
+              <td align="center">
+                <table width="480" cellpadding="0" cellspacing="0"
+                  style="background:#FFFFFF;border-radius:20px;overflow:hidden;
+                         box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+                  <!-- Header -->
+                  <tr>
+                    <td style="background:linear-gradient(135deg,#191970,#2D3A8C);
+                               padding:36px 40px;text-align:center;">
+                      <div style="font-size:48px;margin-bottom:12px;">🐾</div>
+                      <h1 style="margin:0;color:#FFFFFF;font-size:24px;font-weight:700;
+                                 letter-spacing:-0.5px;">Bitzy</h1>
+                      <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">
+                        Seu assistente de saúde pet
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Body -->
+                  <tr>
+                    <td style="padding:40px 40px 32px;">
+                      <h2 style="margin:0 0 8px;color:#111827;font-size:22px;font-weight:700;">
+                        Redefinição de senha
+                      </h2>
+                      <p style="margin:0 0 24px;color:#6B7280;font-size:15px;line-height:1.6;">
+                        Olá, <strong style="color:#111827;">${userName}</strong>! 
+                        Use o código abaixo para redefinir sua senha. 
+                        Ele é válido por <strong>15 minutos</strong>.
+                      </p>
+
+                      <!-- Código -->
+                      <div style="background:#F0F4FF;border:2px dashed #C7D2FE;
+                                  border-radius:16px;padding:28px;text-align:center;
+                                  margin-bottom:24px;">
+                        <p style="margin:0 0 8px;color:#6B7280;font-size:13px;
+                                  text-transform:uppercase;letter-spacing:1px;font-weight:600;">
+                          Seu código
+                        </p>
+                        <span style="font-size:44px;font-weight:800;letter-spacing:12px;
+                                     color:#191970;font-family:'Courier New',monospace;">
+                          ${code}
+                        </span>
+                      </div>
+
+                      <p style="margin:0 0 8px;color:#9CA3AF;font-size:13px;line-height:1.6;">
+                        Se você não solicitou a redefinição de senha, ignore este email. 
+                        Sua senha permanece a mesma.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td style="background:#F9FAFB;padding:20px 40px;
+                               border-top:1px solid #E5E7EB;text-align:center;">
+                      <p style="margin:0;color:#9CA3AF;font-size:12px;">
+                        © ${new Date().getFullYear()} Bitzy — Todos os direitos reservados
+                      </p>
+                    </td>
+                  </tr>
+
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+
+    if (error) {
+      console.error('❌ Resend error:', JSON.stringify(error));
+      throw new Error(error.message);
+    }
+
+    console.log('✅ Email enviado com sucesso. ID:', data?.id);
+  },
+};
+
+module.exports = emailService;
+
+
+---
+## src/config/database.js
+---
+
+const { PrismaClient } = require('@prisma/client');
+
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' 
+    ? ['query', 'error', 'warn'] 
+    : ['error'],
+});
+
+module.exports = prisma;

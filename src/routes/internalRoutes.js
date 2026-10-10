@@ -2,6 +2,7 @@ const express = require('express');
 const internalController = require('../controllers/internalController');
 const { authenticateInternal } = require('../middlewares/internalAuth');
 const { uploadSingle } = require('../middlewares/uploadMiddleware');
+const internalOngController = require('../controllers/internalOngController');
 
 const router = express.Router();
 
@@ -32,5 +33,13 @@ router.patch('/ofertas/:ofertaId', internalController.atualizarOferta);
 router.delete('/ofertas/:ofertaId', internalController.removerOferta);
 router.get('/ofertas/cliques', internalController.listarCliques);
 router.post('/ofertas/upload-foto', uploadSingle, internalController.uploadFotoOferta);
+
+router.get('/ongs', internalOngController.listarOngs);
+router.post('/ongs', internalOngController.criarOng);
+router.get('/ongs/:id', internalOngController.detalharOng);
+router.patch('/ongs/:id/situacao', internalOngController.alterarSituacao);
+router.post('/ongs/:id/acesso', internalOngController.gerarConvite);
+router.delete('/ongs/:id/acesso/convite', internalOngController.revogarConvite);
+router.patch('/ongs/:id/acesso/status', internalOngController.alterarStatusAcesso);
 
 module.exports = router;

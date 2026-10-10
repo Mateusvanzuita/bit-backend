@@ -6,6 +6,7 @@ const cron = require('node-cron');
 const expirarCuponsJob = require('./jobs/expirarCupons');
 const aniversariosJob = require('./jobs/aniversariosJob');
 const clienteSumidoJob  = require('./jobs/clienteSumidoJob');
+const alertasAdocaoJob  = require('./jobs/alertasAdocaoJob');
 
 const startServer = async () => {
   await prisma.$connect();
@@ -24,6 +25,10 @@ const startServer = async () => {
   // Todo dia às 9h — notifica clientes que sumiram há 30 dias
   cron.schedule('0 9 * * *', clienteSumidoJob);
   console.log('✅ Job de cliente sumido agendado (diário às 9h)');
+
+  // A cada 30 min — avisa quem criou um alerta de adoção quando chega um animal compatível
+  cron.schedule('*/30 * * * *', alertasAdocaoJob);
+  console.log('✅ Job de alertas de adoção agendado (a cada 30 min)');
 
   const server = app.listen(config.port, () => {
     console.log(`🚀 Server running on port ${config.port} [${config.nodeEnv}]`);
