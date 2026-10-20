@@ -1405,3 +1405,59 @@ model OngResetToken {
   @@index([usuarioId])
   @@map("ong_reset_tokens")
 }
+
+// ─────────────────────────────────────────────────────────────
+//  NOVIDADES (News) — cole no final do schema.prisma
+//  Reaproveita o enum Especie que já existe (GATO | CACHORRO).
+// ─────────────────────────────────────────────────────────────
+enum CategoriaNovidade {
+  NOTICIAS
+  SAUDE
+  CURIOSIDADES
+  EVENTOS
+}
+
+enum StatusNovidade {
+  RASCUNHO
+  PUBLICADA
+  ARQUIVADA
+}
+
+model Novidade {
+  id              String            @id @default(uuid())
+
+  // Identificador público usado nas rotas do app (ex: "sinais-de-check-up").
+  // O app já usa esse formato como id. Imutável depois de criado.
+  slug            String            @unique
+
+  titulo          String
+  resumo          String            @db.Text
+  categoria       CategoriaNovidade
+  capaUrl         String?           // Cloudinary. Sem capa, o app desenha o gradiente da categoria.
+  tempoLeituraMin Int
+
+  status          StatusNovidade    @default(RASCUNHO)
+  // PUBLICADA + publicadoEm no futuro = agendada (só aparece no app a partir da data)
+  publicadoEm     DateTime?
+
+  especies        Especie[]         @default([])   // vazio = serve para qualquer espécie
+  destaque        Boolean           @default(false)
+  patrocinado     Boolean           @default(false)
+  parceiroNome    String?
+
+  resumoRapido    String[]          @default([])   // 2 a 4 frases curtas
+  blocos          Json                              // [{ tipo: "paragrafo"|"subtitulo"|"lista"|"aviso", ... }]
+  dica            Json?                             // { titulo, texto, acao }
+  relacionados    String[]          @default([])   // slugs
+
+  // título + resumo sem acento e em minúsculas (busca sem depender da extensão unaccent)
+  buscaTexto      String            @default("") @db.Text
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status, publicadoEm])
+  @@index([categoria, status])
+  @@index([destaque, status])
+  @@map("novidades")
+}

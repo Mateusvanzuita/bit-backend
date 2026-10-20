@@ -21,6 +21,21 @@ class OfertaController {
       limite,
     });
 
+    // DEBUG TEMPORÁRIO — investigar ofertas fora da região do usuário
+    console.log('[OFERTAS DEBUG]', {
+      userId: req.user.id,
+      usuarioEncontrado: !!user,
+      cidade: user?.cidade ?? null,
+      estado: user?.estado ?? null,
+      filtroGeograficoAplicado: !!(user?.cidade && user?.estado),
+      destaques,
+      limite,
+      quantidadeOfertas: ofertas.length,
+      petShopsRetornados: [
+        ...new Set(ofertas.map((oferta) => oferta.petShop.nome)),
+      ],
+    });
+
     res.status(200).json({ status: 'success', data: { ofertas } });
   });
 

@@ -14,6 +14,9 @@ const internalRoutes = require('./internalRoutes');
 const vinculoClinicaRoutes = require('./vinculoClinicaRoutes');
 const adocaoRoutes = require('./adocaoRoutes');
 const ongPortalRoutes = require('./ongPortalRoutes');
+const novidadeRoutes = require('./novidadeRoutes');
+const novidadeInternalRoutes = require('./novidadeInternalRoutes');
+
 
 const router = express.Router();
 
@@ -42,5 +45,7 @@ router.use('/internal', internalRoutes);
 router.use('/vinculo-clinica', vinculoClinicaRoutes);
 router.use('/adocao', adocaoRoutes);
 router.use('/ong-portal', ongPortalRoutes);
+router.use('/novidades', novidadeRoutes);
+router.use('/novidades', novidadeInternalRoutes);
 
 module.exports = router;

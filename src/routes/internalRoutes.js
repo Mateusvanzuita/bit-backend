@@ -3,6 +3,7 @@ const internalController = require('../controllers/internalController');
 const { authenticateInternal } = require('../middlewares/internalAuth');
 const { uploadSingle } = require('../middlewares/uploadMiddleware');
 const internalOngController = require('../controllers/internalOngController');
+const novidadeInternalRoutes = require('./novidadeInternalRoutes');
 
 const router = express.Router();
 
@@ -41,5 +42,7 @@ router.patch('/ongs/:id/situacao', internalOngController.alterarSituacao);
 router.post('/ongs/:id/acesso', internalOngController.gerarConvite);
 router.delete('/ongs/:id/acesso/convite', internalOngController.revogarConvite);
 router.patch('/ongs/:id/acesso/status', internalOngController.alterarStatusAcesso);
+
+router.use('/novidades', novidadeInternalRoutes);
 
 module.exports = router;
