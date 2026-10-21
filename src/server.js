@@ -19,11 +19,11 @@ const startServer = async () => {
   console.log('✅ Job de expiração de cupons agendado');
 
   // Todo dia às 8h — notifica tutores com pets aniversariantes
-  cron.schedule('0 8 * * *', aniversariosJob);
+  cron.schedule('0 8 * * *', aniversariosJob, { timezone: 'America/Sao_Paulo' });
   console.log('✅ Job de aniversários agendado (diário às 8h)');
 
   // Todo dia às 9h — notifica clientes que sumiram há 30 dias
-  cron.schedule('0 9 * * *', clienteSumidoJob);
+  cron.schedule('0 9 * * *', clienteSumidoJob, { timezone: 'America/Sao_Paulo' });
   console.log('✅ Job de cliente sumido agendado (diário às 9h)');
 
   // A cada 30 min — avisa quem criou um alerta de adoção quando chega um animal compatível

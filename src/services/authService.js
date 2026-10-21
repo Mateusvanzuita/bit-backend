@@ -202,7 +202,21 @@ class AuthService {
   // ─── PUSH TOKEN ───────────────────────────────────────────────────────────
 
   async updatePushToken(userId, pushToken) {
+    // Um aparelho pertence a uma conta só: quem entrou por último fica com o token.
+    if (pushToken) {
+      await prisma.user.updateMany({
+        where: { pushToken, id: { not: userId } },
+        data: { pushToken: null },
+      });
+    }
     await userRepository.update(userId, { pushToken });
+}
+
+  async removePushToken(userId, pushToken) {
+    await prisma.user.updateMany({
+      where: { id: userId, ...(pushToken ? { pushToken } : {}) },
+      data: { pushToken: null },
+    });
   }
 }
 

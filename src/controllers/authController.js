@@ -106,6 +106,11 @@ class AuthController {
     await authService.updatePushToken(req.user.id, pushToken);
     res.status(200).json({ status: 'success', message: 'Push token atualizado' });
   });
+
+  removePushToken = asyncHandler(async (req, res) => {
+    await authService.removePushToken(req.user.id, req.body?.pushToken);
+    res.status(200).json({ status: 'success', message: 'Push token removido' });
+  });
 }
 
 module.exports = new AuthController();

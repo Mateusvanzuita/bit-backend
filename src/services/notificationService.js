@@ -73,7 +73,8 @@ class NotificationService {
 
       // 3. Envia push se o usuário tiver token e notificações ativas
       if (user?.pushToken && user.notificacoesAtivas) {
-        await enviarPush(user.pushToken, titulo, mensagem, { pathKey });
+        // Sem await: o push é best-effort e não deve atrasar a resposta da API.
+        enviarPush(user.pushToken, titulo, mensagem, { pathKey });
       }
 
       return notificacao;

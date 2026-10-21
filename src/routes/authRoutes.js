@@ -37,6 +37,7 @@ router.patch(
 router.patch('/change-password', authMiddleware, authController.changePassword);
 router.patch('/location',      authMiddleware, authController.updateLocation);
 router.patch('/push-token',    authMiddleware, authController.updatePushToken);
+router.delete('/push-token',   authMiddleware, authController.removePushToken);
 router.delete('/delete-account', authMiddleware, authController.deleteAccount);
 router.post('/perfil/avatar',  authMiddleware, uploadUserPhoto, uploadController.uploadUserPhoto);
 
