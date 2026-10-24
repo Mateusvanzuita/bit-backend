@@ -50,12 +50,17 @@ async findAniversariantes() {
         p."userId",
         p."dataNascimento",
         p.especie,
-        EXTRACT(YEAR FROM AGE(NOW(), p."dataNascimento"))::int AS anos
+        (EXTRACT(YEAR FROM h.d) - EXTRACT(YEAR FROM n.d))::int AS anos
       FROM pets p
+      CROSS JOIN (SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS d) h
+      CROSS JOIN LATERAL (
+        SELECT ((p."dataNascimento" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date AS d
+      ) n
       WHERE
         p."dataNascimento" IS NOT NULL
-        AND EXTRACT(MONTH FROM p."dataNascimento") = EXTRACT(MONTH FROM NOW())
-        AND EXTRACT(DAY   FROM p."dataNascimento") = EXTRACT(DAY   FROM NOW())
+        AND EXTRACT(MONTH FROM n.d) = EXTRACT(MONTH FROM h.d)
+        AND EXTRACT(DAY   FROM n.d) = EXTRACT(DAY   FROM h.d)
+        AND EXTRACT(YEAR  FROM n.d) < EXTRACT(YEAR FROM h.d)
     `;
   }
   async findRegistrosClinicosByPetId(petId) {

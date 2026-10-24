@@ -83,7 +83,7 @@ class CupomResgateRepository extends BaseRepository {
     return await prisma.cupomResgate.findMany({
       where: {
         status: 'ATIVO',
-        avisoEnviado: { not: nivel },
+        OR: [{ avisoEnviado: null }, { avisoEnviado: { not: nivel } }],
         dataFimSnapshot: {
           gte: de,
           lte: ate,
