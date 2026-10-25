@@ -58,6 +58,12 @@ model User {
 
   notificacoesAtivas Boolean @default(true)
 
+  // Preferências de push por categoria (o toggle geral é notificacoesAtivas)
+  pushPet        Boolean @default(true)
+  pushAdocao     Boolean @default(true)
+  pushClube      Boolean @default(true)
+  pushNovidades  Boolean @default(true)
+
   consentimentoIA   Boolean   @default(false)
   consentimentoIAEm DateTime?
 
@@ -78,8 +84,13 @@ model User {
   alertasAdocao       AlertaAdocao[]
   denunciasAnimais    DenunciaAnimal[]
   ajudasOng           AjudaOng[]
+  avaliacoesApp       AvaliacaoApp[]
   pushToken           String?
   ultimoFavoritadoEm DateTime?
+
+  // Código pessoal de indicação (ex.: BITZY-K7M2Q). Gerado sob demanda.
+  // Base da fase 2: campo "tem código?" no cadastro, tabela Indicacao e recompensa no Clube.
+  codigoIndicacao    String? @unique
   
   latitude   Float?
   longitude  Float?
@@ -1460,4 +1471,56 @@ model Novidade {
   @@index([categoria, status])
   @@index([destaque, status])
   @@map("novidades")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  AVALIAÇÃO DO APP
+//  userId em SetNull: se a conta for excluída, a nota continua nas métricas.
+// ─────────────────────────────────────────────────────────────
+enum StatusAvaliacaoApp {
+  NOVA
+  EM_ANALISE
+  RESOLVIDA
+}
+
+model AvaliacaoApp {
+  id          String   @id @default(uuid())
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  nota        Int                      // 1 a 5
+  comentario  String?  @db.Text
+  gatilho     String                   // VACINA_REGISTRADA, ANALISE_CONCLUIDA...
+  plataforma  String                   // "ios" | "android"
+  versaoApp   String?
+  build       String?
+
+  abriuLoja   Boolean  @default(false)
+  statusAdmin StatusAvaliacaoApp @default(NOVA)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([nota])
+  @@index([versaoApp])
+  @@map("avaliacoes_app")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  VERSÃO DO APP (por plataforma)
+//  versaoMinima: abaixo dela o app mostra a tela de atualização obrigatória.
+//  ultimaVersao: abaixo dela o app mostra o aviso dispensável.
+// ─────────────────────────────────────────────────────────────
+model ConfigVersaoApp {
+  plataforma   String   @id          // "ios" | "android"
+  versaoMinima String   @default("0.0.0")
+  ultimaVersao String   @default("0.0.0")
+  urlLoja      String?
+  mensagem     String?
+  updatedAt    DateTime @updatedAt
+
+  @@map("config_versao_app")
 }

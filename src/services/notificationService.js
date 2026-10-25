@@ -17,6 +17,33 @@ const prisma = require('../config/database');
 const notificationRepository = require('../repositories/notificationRepository');
 const { enviarPush } = require('./pushService');
 
+// Categoria -> campo de preferência no User.
+// 'IMPORTANTE' (ou null) não tem campo: só respeita o toggle geral.
+const CAMPO_POR_CATEGORIA = {
+  PET: 'pushPet',
+  ADOCAO: 'pushAdocao',
+  CLUBE: 'pushClube',
+  NOVIDADES: 'pushNovidades',
+};
+
+function inferirCategoria({ categoria, pathKey, tipo }) {
+  if (categoria) return categoria;
+  const p = pathKey || '';
+  if (p.startsWith('/adocao')) return 'ADOCAO';
+  if (p.startsWith('/clube') || p.startsWith('/ofertas')) return 'CLUBE';
+  if (p.startsWith('/news')) return 'NOVIDADES';
+  if (
+    p.startsWith('/pets') ||
+    p.startsWith('/analise') ||
+    p.startsWith('/vaccines') ||
+    p.startsWith('/tips')
+  ) {
+    return 'PET';
+  }
+  if (['DICA', 'ANALISE', 'SAUDE'].includes(tipo)) return 'PET';
+  return null;
+}
+
 class NotificationService {
 
   // ── CRUD ──────────────────────────────────────────────────
@@ -54,9 +81,9 @@ class NotificationService {
   // Método central — use este em todos os outros services.
   // Nunca lança exceção: falhas de push não devem quebrar o fluxo principal.
 
-  async notificar(userId, { titulo, mensagem, tipo, pathKey = null }) {
+  async notificar(userId, { titulo, mensagem, tipo, pathKey = null, categoria = null }) {
     try {
-      // 1. Persiste no banco
+      // 1. Persiste no banco (o sininho registra tudo, independente das preferências de push)
       const notificacao = await notificationRepository.create({
         userId,
         titulo,
@@ -65,14 +92,24 @@ class NotificationService {
         pathKey,
       });
 
-      // 2. Busca pushToken do usuário (somente se notificações ativas)
+      // 2. Busca pushToken e preferências do usuário
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { pushToken: true, notificacoesAtivas: true },
+        select: {
+          pushToken: true,
+          notificacoesAtivas: true,
+          pushPet: true,
+          pushAdocao: true,
+          pushClube: true,
+          pushNovidades: true,
+        },
       });
 
-      // 3. Envia push se o usuário tiver token e notificações ativas
-      if (user?.pushToken && user.notificacoesAtivas) {
+      // 3. Só o push do celular respeita toggle geral + categoria
+      const campo = CAMPO_POR_CATEGORIA[inferirCategoria({ categoria, pathKey, tipo })];
+      const categoriaPermite = !campo || user?.[campo] !== false;
+
+      if (user?.pushToken && user.notificacoesAtivas && categoriaPermite) {
         // Sem await: o push é best-effort e não deve atrasar a resposta da API.
         enviarPush(user.pushToken, titulo, mensagem, { pathKey });
       }

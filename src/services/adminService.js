@@ -366,7 +366,9 @@ class AdminService {
 
   // ── NOTIFICAÇÃO BROADCAST ─────────────────────────────────────────────────
 
-  async broadcastNotificacao({ titulo, mensagem, tipo = 'SISTEMA', pathKey, filtro }) {
+  // categoria: 'PET' | 'ADOCAO' | 'CLUBE' | 'NOVIDADES' | 'IMPORTANTE'.
+  // 'IMPORTANTE' (ou vazio, sem pathKey reconhecível) ignora as categorias e respeita só o toggle geral.
+  async broadcastNotificacao({ titulo, mensagem, tipo = 'SISTEMA', pathKey, filtro, categoria }) {
     // filtro: { comPets: bool, cidade: string, estado: string }
     const where = {};
 
@@ -395,7 +397,7 @@ class AdminService {
       const lote = usuarios.slice(i, i + BATCH);
       await Promise.allSettled(
         lote.map((u) =>
-          notificationService.notificar(u.id, { titulo, mensagem, tipo, pathKey }),
+          notificationService.notificar(u.id, { titulo, mensagem, tipo, pathKey, categoria }),
         ),
       );
       enviados += lote.length;

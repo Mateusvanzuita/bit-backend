@@ -71,13 +71,14 @@ class AdminController {
   // ── BROADCAST ─────────────────────────────────────────────────────────────
 
   broadcast = asyncHandler(async (req, res) => {
-    const { titulo, mensagem, tipo, pathKey, filtro } = req.body;
+    const { titulo, mensagem, tipo, pathKey, filtro, categoria } = req.body;
     const resultado = await adminService.broadcastNotificacao({
       titulo,
       mensagem,
       tipo,
       pathKey,
       filtro,
+      categoria,
     });
     res.status(200).json({ status: 'success', data: resultado });
   });

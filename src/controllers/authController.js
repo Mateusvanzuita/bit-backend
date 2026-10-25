@@ -111,6 +111,25 @@ class AuthController {
     await authService.removePushToken(req.user.id, req.body?.pushToken);
     res.status(200).json({ status: 'success', message: 'Push token removido' });
   });
+
+  // ─── PREFERÊNCIAS DE PUSH ──────────────────────────────────────────────
+
+  getPreferenciasPush = asyncHandler(async (req, res) => {
+    const preferencias = await authService.getPreferenciasPush(req.user.id);
+    res.status(200).json({ status: 'success', data: { preferencias } });
+  });
+
+  updatePreferenciasPush = asyncHandler(async (req, res) => {
+    const preferencias = await authService.updatePreferenciasPush(req.user.id, req.body);
+    res.status(200).json({ status: 'success', data: { preferencias } });
+  });
+
+  // ─── INDICAÇÃO ─────────────────────────────────────────────────────────
+
+  getCodigoIndicacao = asyncHandler(async (req, res) => {
+    const codigo = await authService.getCodigoIndicacao(req.user.id);
+    res.status(200).json({ status: 'success', data: { codigo } });
+  });
 }
 
 module.exports = new AuthController();

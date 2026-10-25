@@ -16,6 +16,8 @@ const adocaoRoutes = require('./adocaoRoutes');
 const ongPortalRoutes = require('./ongPortalRoutes');
 const novidadeRoutes = require('./novidadeRoutes');
 const novidadeInternalRoutes = require('./novidadeInternalRoutes');
+const avaliacaoAppRoutes = require('./avaliacaoAppRoutes');
+const versaoAppRoutes = require('./versaoAppRoutes');
 
 
 const router = express.Router();
@@ -47,5 +49,7 @@ router.use('/adocao', adocaoRoutes);
 router.use('/ong-portal', ongPortalRoutes);
 router.use('/novidades', novidadeRoutes);
 router.use('/novidades', novidadeInternalRoutes);
+router.use('/avaliacoes-app', avaliacaoAppRoutes);
+router.use('/app', versaoAppRoutes);
 
 module.exports = router;

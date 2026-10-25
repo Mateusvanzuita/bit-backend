@@ -4,6 +4,8 @@ const { authenticateInternal } = require('../middlewares/internalAuth');
 const { uploadSingle } = require('../middlewares/uploadMiddleware');
 const internalOngController = require('../controllers/internalOngController');
 const novidadeInternalRoutes = require('./novidadeInternalRoutes');
+const avaliacaoAppInternalRoutes = require('./avaliacaoAppInternalRoutes');
+const versaoAppInternalRoutes = require('./versaoAppInternalRoutes');
 
 const router = express.Router();
 
@@ -44,5 +46,7 @@ router.delete('/ongs/:id/acesso/convite', internalOngController.revogarConvite);
 router.patch('/ongs/:id/acesso/status', internalOngController.alterarStatusAcesso);
 
 router.use('/novidades', novidadeInternalRoutes);
+router.use('/avaliacoes-app', avaliacaoAppInternalRoutes);
+router.use('/config-versao-app', versaoAppInternalRoutes);
 
 module.exports = router;

@@ -7,6 +7,25 @@ const { generateToken, decodeToken } = require('../utils/jwt');
 const { AppError } = require('../middlewares/errorHandler');
 const emailService = require('./emailService');
 
+const PREFERENCIAS_PUSH_SELECT = {
+  notificacoesAtivas: true,
+  pushPet: true,
+  pushAdocao: true,
+  pushClube: true,
+  pushNovidades: true,
+};
+
+// Sem 0/O/1/I para evitar confusão ao digitar o código.
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function gerarCodigoIndicacao() {
+  let sufixo = '';
+  for (let i = 0; i < 5; i += 1) {
+    sufixo += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
+  }
+  return `BITZY-${sufixo}`;
+}
+
 class AuthService {
   async register(userData) {
     const existingUser = await userRepository.findByEmail(userData.email);
@@ -217,6 +236,58 @@ class AuthService {
       where: { id: userId, ...(pushToken ? { pushToken } : {}) },
       data: { pushToken: null },
     });
+  }
+
+  // ─── PREFERÊNCIAS DE PUSH ─────────────────────────────────────────────────
+
+  async getPreferenciasPush(userId) {
+    const preferencias = await prisma.user.findUnique({
+      where: { id: userId },
+      select: PREFERENCIAS_PUSH_SELECT,
+    });
+    if (!preferencias) throw new AppError('Usuário não encontrado', 404);
+    return preferencias;
+  }
+
+  async updatePreferenciasPush(userId, body = {}) {
+    const data = {};
+    for (const campo of Object.keys(PREFERENCIAS_PUSH_SELECT)) {
+      if (typeof body[campo] === 'boolean') data[campo] = body[campo];
+    }
+    if (Object.keys(data).length === 0) {
+      throw new AppError('Nenhuma preferência válida foi enviada.', 400);
+    }
+    return await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: PREFERENCIAS_PUSH_SELECT,
+    });
+  }
+
+  // ─── INDICAÇÃO ────────────────────────────────────────────────────────────
+
+  // Devolve o código do usuário; se ainda não tem, gera um.
+  // O updateMany com "codigoIndicacao: null" evita sobrescrever se duas chamadas chegarem juntas,
+  // e o P2002 (código repetido) apenas sorteia outro.
+  async getCodigoIndicacao(userId) {
+    for (let tentativa = 0; tentativa < 5; tentativa += 1) {
+      const atual = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { codigoIndicacao: true },
+      });
+      if (!atual) throw new AppError('Usuário não encontrado', 404);
+      if (atual.codigoIndicacao) return atual.codigoIndicacao;
+
+      try {
+        await prisma.user.updateMany({
+          where: { id: userId, codigoIndicacao: null },
+          data: { codigoIndicacao: gerarCodigoIndicacao() },
+        });
+      } catch (err) {
+        if (err.code !== 'P2002') throw err;
+      }
+    }
+    throw new AppError('Não foi possível gerar o código de indicação.', 500);
   }
 }
 

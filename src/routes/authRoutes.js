@@ -38,6 +38,9 @@ router.patch('/change-password', authMiddleware, authController.changePassword);
 router.patch('/location',      authMiddleware, authController.updateLocation);
 router.patch('/push-token',    authMiddleware, authController.updatePushToken);
 router.delete('/push-token',   authMiddleware, authController.removePushToken);
+router.get('/preferencias-push',   authMiddleware, authController.getPreferenciasPush);
+router.patch('/preferencias-push', authMiddleware, authController.updatePreferenciasPush);
+router.get('/codigo-indicacao',    authMiddleware, authController.getCodigoIndicacao);
 router.delete('/delete-account', authMiddleware, authController.deleteAccount);
 router.post('/perfil/avatar',  authMiddleware, uploadUserPhoto, uploadController.uploadUserPhoto);
 
