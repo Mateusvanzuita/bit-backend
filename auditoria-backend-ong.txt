@@ -1,0 +1,1655 @@
+
+
+================================================================
+ARQUIVO: src/routes/ongPortalRoutes.js
+================================================================
+
+// src/routes/ongPortalRoutes.js
+// Montar em src/routes/index.js:   router.use('/ong-portal', require('./ongPortalRoutes'));
+const express = require('express');
+const ongCsrf = require('../middlewares/ongCsrf');
+const authOng = require('../middlewares/authOng');
+const ongUpload = require('../middlewares/ongUpload');
+const { authLimiter, uploadLimiter } = require('../middlewares/rateLimiter');
+const { ongErrorHandler } = require('../utils/ongErrors');
+const auth = require('../controllers/ongPortalAuthController');
+const c = require('../controllers/ongPortalController');
+
+const router = express.Router();
+
+// Toda requisição do portal precisa do cabeçalho X-Requested-With (defesa extra contra CSRF).
+router.use(ongCsrf);
+// Respostas com dados de pessoas e sessões nunca ficam em cache.
+router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
+// ── Autenticação (públicas) ─────────────────────────────────────────────────
+router.get('/auth/convite/:token', authLimiter, auth.consultarConvite);
+router.post('/auth/primeiro-acesso', authLimiter, auth.primeiroAcesso);
+router.post('/auth/login', authLimiter, auth.login);
+router.post('/auth/refresh', authLimiter, auth.refresh);
+router.post('/auth/logout', auth.logout);
+router.post('/auth/esqueci-senha', authLimiter, auth.esqueciSenha);
+router.post('/auth/redefinir-senha', authLimiter, auth.redefinirSenha);
+
+// ── Protegidas: ONG pelo token ──────────────────────────────────────────────
+router.use(authOng);
+
+router.get('/me', auth.me);
+router.get('/dashboard', c.dashboard);
+router.get('/metricas', c.metricas);
+
+router.get('/perfil', c.obterPerfil);
+router.patch('/perfil', c.atualizarPerfil);
+
+router.get('/animais', c.listarAnimais);
+router.post('/animais', c.criarAnimal);
+router.get('/animais/:id', c.obterAnimal);
+router.patch('/animais/:id', c.atualizarAnimal);
+router.patch('/animais/:id/status', c.statusAnimal);
+router.patch('/animais/:id/publicacao', c.publicacaoAnimal);
+router.put('/animais/:id/fotos', c.fotosAnimal);
+
+router.post('/uploads/:tipo', uploadLimiter, ongUpload, c.upload);
+
+router.get('/interesses', c.listarInteresses);
+router.get('/interesses/:id', c.obterInteresse);
+router.patch('/interesses/:id/status', c.statusInteresse);
+router.post('/interesses/:id/confirmar-adocao', c.confirmarAdocao);
+
+router.get('/ajuda', c.obterAjuda);
+router.put('/ajuda', c.salvarAjuda);
+router.get('/ajudas', c.listarPedidos);
+router.patch('/ajudas/:id/status', c.statusPedido);
+
+router.use(ongErrorHandler);
+
+module.exports = router;
+
+
+================================================================
+ARQUIVO: src/controllers/ongPortalController.js
+================================================================
+
+// src/controllers/ongPortalController.js
+// Finos de propósito: `ongId` SEMPRE de req.ong (token + banco). Nada de ongId vindo de body/query/params.
+const asyncHandler = require('../utils/asyncHandler');
+const perfil = require('../services/ongPortalPerfilService');
+const animais = require('../services/ongPortalAnimaisService');
+const interesses = require('../services/ongPortalInteressesService');
+const painel = require('../services/ongPortalPainelService');
+
+const ok = (res, data, status = 200) => res.status(status).json({ status: 'success', data });
+const ong = (req) => req.ong.ongId;
+
+exports.dashboard = asyncHandler(async (req, res) => ok(res, await painel.dashboard(ong(req))));
+exports.metricas = asyncHandler(async (req, res) => ok(res, await painel.metricas(ong(req), req.query.periodo ?? '30d')));
+
+exports.obterPerfil = asyncHandler(async (req, res) => ok(res, await perfil.obterPerfil(ong(req))));
+exports.atualizarPerfil = asyncHandler(async (req, res) => ok(res, await perfil.atualizarPerfil(ong(req), req.body)));
+
+exports.listarAnimais = asyncHandler(async (req, res) => ok(res, await animais.listar(ong(req), req.query)));
+exports.obterAnimal = asyncHandler(async (req, res) => ok(res, await animais.obter(ong(req), req.params.id)));
+exports.criarAnimal = asyncHandler(async (req, res) => ok(res, await animais.criar(ong(req), req.body), 201));
+exports.atualizarAnimal = asyncHandler(async (req, res) => ok(res, await animais.atualizar(ong(req), req.params.id, req.body)));
+exports.statusAnimal = asyncHandler(async (req, res) => ok(res, await animais.alterarStatus(ong(req), req.params.id, req.body)));
+exports.publicacaoAnimal = asyncHandler(async (req, res) => ok(res, await animais.alterarPublicacao(ong(req), req.params.id, req.body)));
+exports.fotosAnimal = asyncHandler(async (req, res) => ok(res, await animais.atualizarFotos(ong(req), req.params.id, req.body)));
+
+exports.upload = asyncHandler(async (req, res) => ok(res, { url: req.file.path }, 201));
+
+exports.listarInteresses = asyncHandler(async (req, res) => ok(res, await interesses.listar(ong(req), req.query)));
+exports.obterInteresse = asyncHandler(async (req, res) => ok(res, await interesses.obter(ong(req), req.params.id)));
+exports.statusInteresse = asyncHandler(async (req, res) => ok(res, await interesses.alterarStatus(ong(req), req.params.id, req.body)));
+exports.confirmarAdocao = asyncHandler(async (req, res) => ok(res, await interesses.confirmarAdocao(ong(req), req.params.id)));
+
+exports.obterAjuda = asyncHandler(async (req, res) => ok(res, await perfil.obterAjuda(ong(req))));
+exports.salvarAjuda = asyncHandler(async (req, res) => ok(res, await perfil.salvarAjuda(ong(req), req.body)));
+exports.listarPedidos = asyncHandler(async (req, res) => ok(res, await interesses.listarPedidos(ong(req), req.query)));
+exports.statusPedido = asyncHandler(async (req, res) => ok(res, await interesses.alterarStatusPedido(ong(req), req.params.id, req.body)));
+
+
+================================================================
+ARQUIVO: src/controllers/ongPortalAuthController.js
+================================================================
+
+// src/controllers/ongPortalAuthController.js
+const asyncHandler = require('../utils/asyncHandler');
+const env = require('../config/env');
+const ongAuth = require('../services/ongAuthService');
+
+const COOKIE = 'bitzy_ong_rt';
+const COOKIE_PATH = '/api/v1/ong-portal/auth';
+
+function cookieOpts() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    domain: env.ongPortal?.cookieDomain,
+    path: COOKIE_PATH, // o cookie só viaja para as rotas de auth
+  };
+}
+
+const setRefresh = (res, raw) =>
+  res.cookie(COOKIE, raw, { ...cookieOpts(), maxAge: (env.ongPortal?.refreshTtlDias ?? 30) * 86400000 });
+const clearRefresh = (res) => res.clearCookie(COOKIE, cookieOpts());
+
+// Lê o cookie sem depender de cookie-parser.
+function lerRefresh(req) {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  for (const parte of raw.split(';')) {
+    const i = parte.indexOf('=');
+    if (i > 0 && parte.slice(0, i).trim() === COOKIE) return decodeURIComponent(parte.slice(i + 1).trim());
+  }
+  return null;
+}
+
+const ok = (res, data, status = 200) => res.status(status).json({ status: 'success', data });
+
+exports.consultarConvite = asyncHandler(async (req, res) => ok(res, await ongAuth.consultarConvite(req.params.token)));
+
+exports.primeiroAcesso = asyncHandler(async (req, res) => ok(res, await ongAuth.primeiroAcesso(req.body.token, req.body.senha)));
+
+exports.login = asyncHandler(async (req, res) => {
+  const { accessToken, refreshToken, usuario, ong } = await ongAuth.login(req.body.email, req.body.senha);
+  setRefresh(res, refreshToken);
+  ok(res, { accessToken, usuario, ong });
+});
+
+exports.refresh = asyncHandler(async (req, res) => {
+  try {
+    const { accessToken, refreshToken } = await ongAuth.refresh(lerRefresh(req));
+    setRefresh(res, refreshToken);
+    ok(res, { accessToken });
+  } catch (e) {
+    // Sessão inválida/bloqueada: limpa o cookie para o portal não insistir.
+    if (e.statusCode === 401 || e.code === 'ONG_BLOQUEADA') clearRefresh(res);
+    throw e;
+  }
+});
+
+exports.logout = asyncHandler(async (req, res) => {
+  await ongAuth.logout(lerRefresh(req));
+  clearRefresh(res);
+  ok(res, { ok: true });
+});
+
+exports.esqueciSenha = asyncHandler(async (req, res) => {
+  await ongAuth.esqueciSenha(req.body.email);
+  // Sempre a mesma resposta.
+  ok(res, { ok: true });
+});
+
+exports.redefinirSenha = asyncHandler(async (req, res) => {
+  await ongAuth.redefinirSenha(req.body.token, req.body.senha);
+  ok(res, { ok: true });
+});
+
+exports.me = asyncHandler(async (req, res) => ok(res, await ongAuth.me(req.ong.usuarioId)));
+
+
+================================================================
+ARQUIVO: src/middlewares/authOng.js
+================================================================
+
+// src/middlewares/authOng.js
+// Protege /ong-portal/*. Token assinado com ONG_JWT_SECRET e claim type:'ong'.
+// O `ongId` e o `usuarioId` vêm SEMPRE do token (e do banco), nunca do corpo/URL da requisição.
+const jwt = require('jsonwebtoken');
+const prisma = require('../config/database');
+const env = require('../config/env');
+const { OngError } = require('../utils/ongErrors');
+
+async function authOng(req, res, next) {
+  try {
+    const h = req.headers.authorization;
+    if (!h || !h.startsWith('Bearer ')) throw new OngError('Faça login para continuar.', 401, 'NAO_AUTENTICADO');
+    if (!env.ongPortal?.jwtSecret) throw new OngError('Serviço indisponível.', 503, 'CONFIG');
+
+    let decoded;
+    try {
+      decoded = jwt.verify(h.slice(7), env.ongPortal.jwtSecret, { algorithms: ['HS256'], issuer: 'bitzy-ong' });
+    } catch {
+      throw new OngError('Sessão expirada.', 401, 'SESSAO_EXPIRADA');
+    }
+    if (decoded.type !== 'ong' || !decoded.sub || !decoded.ongId) {
+      throw new OngError('Sessão inválida.', 401, 'SESSAO_EXPIRADA');
+    }
+
+    // Confere no banco a cada requisição: bloquear no admin vale na hora, não só quando o token vencer.
+    const u = await prisma.ongUsuario.findUnique({
+      where: { id: decoded.sub },
+      select: { id: true, ongId: true, status: true, ong: { select: { ativa: true } } },
+    });
+    if (!u || u.ongId !== decoded.ongId) throw new OngError('Sessão expirada.', 401, 'SESSAO_EXPIRADA');
+    if (u.status === 'BLOQUEADO' || !u.ong.ativa) {
+      throw new OngError('O acesso desta ONG está bloqueado. Fale com a equipe Bitzy.', 403, 'ONG_BLOQUEADA');
+    }
+    if (u.status !== 'ATIVO') throw new OngError('Sessão expirada.', 401, 'SESSAO_EXPIRADA');
+
+    req.ong = { usuarioId: u.id, ongId: u.ongId };
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+module.exports = authOng;
+
+
+================================================================
+ARQUIVO: src/middlewares/ongCsrf.js
+================================================================
+
+// src/middlewares/ongCsrf.js
+// Defesa extra contra CSRF (além de SameSite=Lax + CORS com lista de origens):
+// exige o cabeçalho customizado que o portal envia. Um formulário/imagem de outro site não consegue defini-lo,
+// e um fetch de outra origem precisaria de preflight CORS, que só passa para origens permitidas.
+const { OngError } = require('../utils/ongErrors');
+
+const VALOR = 'bitzy-ong-portal';
+
+module.exports = function ongCsrf(req, res, next) {
+  if (req.method === 'OPTIONS') return next();
+  if (req.headers['x-requested-with'] !== VALOR) {
+    return next(new OngError('Requisição não autorizada.', 403, 'CSRF'));
+  }
+  next();
+};
+
+
+================================================================
+ARQUIVO: src/middlewares/ongUpload.js
+================================================================
+
+// src/middlewares/ongUpload.js
+// Upload de imagens do portal: multipart (campo `foto`), 5 MB, JPG/PNG/WebP. A pasta no Cloudinary inclui o ongId.
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('../config/cloudinary');
+const { TIPOS } = require('../utils/ongImagens');
+const { OngError } = require('../utils/ongErrors');
+
+const TRANSFORMACOES = {
+  'animal-foto': [{ width: 1200, height: 1200, crop: 'limit' }, { quality: 'auto' }, { fetch_format: 'auto' }],
+  'ong-logo': [{ width: 600, height: 600, crop: 'limit' }, { quality: 'auto' }, { fetch_format: 'auto' }],
+  'ong-banner': [{ width: 1600, height: 900, crop: 'limit' }, { quality: 'auto' }, { fetch_format: 'auto' }],
+};
+const PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'];
+
+function construir(tipo, ongId) {
+  const storage = new CloudinaryStorage({
+    cloudinary,
+    params: {
+      folder: `bitzy/ong/${ongId}/${TIPOS[tipo]}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: TRANSFORMACOES[tipo],
+    },
+  });
+  return multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    fileFilter: (req, file, cb) =>
+      PERMITIDOS.includes(file.mimetype) ? cb(null, true) : cb(new OngError('Formato inválido. Use JPG, PNG ou WebP.', 400, 'ARQUIVO_INVALIDO')),
+  }).single('foto');
+}
+
+module.exports = function ongUpload(req, res, next) {
+  const tipo = req.params.tipo;
+  if (!TIPOS[tipo]) return next(new OngError('Tipo de upload inválido.', 400, 'VALIDACAO'));
+  construir(tipo, req.ong.ongId)(req, res, (err) => {
+    if (!err) {
+      if (!req.file?.path) return next(new OngError('Envie uma imagem.', 400, 'ARQUIVO_INVALIDO'));
+      return next();
+    }
+    if (err instanceof multer.MulterError) {
+      const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Imagem muito grande. Máximo: 5 MB.' : 'Arquivo inválido.';
+      return next(new OngError(msg, 400, 'ARQUIVO_INVALIDO'));
+    }
+    return next(err instanceof OngError ? err : new OngError('Não foi possível enviar a imagem.', 400, 'ARQUIVO_INVALIDO'));
+  });
+};
+
+
+================================================================
+ARQUIVO: src/middlewares/rateLimiter.js
+================================================================
+
+// src/middlewares/rateLimiter.js
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+
+const msg = (minutos) => ({
+  status: 'error',
+  message: `Muitas requisições. Tente novamente em ${minutos} minuto${minutos > 1 ? 's' : ''}.`,
+});
+
+exports.authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: msg(15),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+exports.registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: msg(60),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+exports.aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: {
+    status: 'error',
+    message: 'Limite de consultas à IA atingido. Tente novamente em 1 hora.',
+  },
+  keyGenerator: (req) => {
+    if (req.user?.id) return `user:${req.user.id}`;
+    return ipKeyGenerator(req); // helper oficial — trata IPv6 corretamente
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+exports.uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  message: msg(60),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+exports.generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: msg(1),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+================================================================
+ARQUIVO: src/services/ongAuthService.js
+================================================================
+
+// src/services/ongAuthService.js
+// Autenticação do portal das ONGs: convite, primeiro acesso, login, refresh (rotativo), logout, recuperação de senha.
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const prisma = require('../config/database');
+const env = require('../config/env');
+const emailService = require('./emailService');
+const { OngError } = require('../utils/ongErrors');
+
+const RESET_VALIDADE_MS = 60 * 60 * 1000; // 1 hora
+const GRACE_REFRESH_MS = 10 * 1000;        // duas abas renovando juntas não derrubam a sessão
+const BCRYPT_COST = 12;
+// Hash fictício: gasta o mesmo tempo quando o e-mail não existe (evita descobrir e-mails pelo tempo de resposta).
+const HASH_FALSO = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO5b1Z5kq1p2kZ6rjkYQmQZs4xWmJ5J9u';
+
+const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex');
+const novoToken = () => crypto.randomBytes(32).toString('base64url');
+const normEmail = (e) => String(e || '').trim().toLowerCase();
+const TOKEN_FORMATO = /^[A-Za-z0-9_-]{20,100}$/;
+
+const MSG_CREDENCIAIS = 'E-mail ou senha incorretos.';
+const MSG_LINK = 'Este link é inválido ou já foi usado.';
+
+function validarSenha(senha) {
+  if (typeof senha !== 'string' || senha.length < 8) {
+    throw new OngError('A senha precisa ter pelo menos 8 caracteres.', 400, 'SENHA_FRACA');
+  }
+  if (senha.length > 72) throw new OngError('A senha pode ter no máximo 72 caracteres.', 400, 'SENHA_FRACA');
+  if (!/[A-Za-z]/.test(senha) || !/\d/.test(senha)) {
+    throw new OngError('Use letras e números na senha.', 400, 'SENHA_FRACA');
+  }
+}
+
+function assinarAcesso(usuario) {
+  if (!env.ongPortal?.jwtSecret) throw new OngError('Serviço indisponível.', 503, 'CONFIG');
+  return jwt.sign({ type: 'ong', ongId: usuario.ongId }, env.ongPortal.jwtSecret, {
+    subject: usuario.id,
+    expiresIn: env.ongPortal.accessTtl,
+    issuer: 'bitzy-ong',
+    algorithm: 'HS256',
+  });
+}
+
+const serializarSessao = (u) => ({
+  usuario: { id: u.id, nome: u.nome, email: u.email },
+  ong: {
+    id: u.ong.id, nome: u.ong.nome, tipo: u.ong.tipo, logoUrl: u.ong.logoUrl,
+    verificada: u.ong.verificada, ativa: u.ong.ativa,
+  },
+});
+
+const bloqueado = (u) => u.status === 'BLOQUEADO' || !u.ong.ativa;
+const erroBloqueio = () =>
+  new OngError('O acesso desta ONG está bloqueado. Fale com a equipe Bitzy.', 403, 'ONG_BLOQUEADA');
+
+async function emitirRefresh(usuarioId, familiaId = crypto.randomUUID()) {
+  const raw = novoToken();
+  const dias = env.ongPortal?.refreshTtlDias ?? 30;
+  await prisma.ongRefreshToken.create({
+    data: { usuarioId, familiaId, tokenHash: sha256(raw), expiraEm: new Date(Date.now() + dias * 86400000) },
+  });
+  return raw;
+}
+
+const incluirOng = { ong: { select: { id: true, nome: true, tipo: true, logoUrl: true, verificada: true, ativa: true } } };
+
+class OngAuthService {
+  // ── Convite ───────────────────────────────────────────────────────────────
+  async _conviteValido(token) {
+    if (!TOKEN_FORMATO.test(String(token || ''))) throw new OngError(MSG_LINK, 404, 'CONVITE_INVALIDO');
+    const u = await prisma.ongUsuario.findUnique({
+      where: { conviteTokenHash: sha256(token) },
+      include: incluirOng,
+    });
+    if (!u || u.status !== 'CONVIDADO') throw new OngError(MSG_LINK, 404, 'CONVITE_INVALIDO');
+    if (!u.conviteExpiraEm || u.conviteExpiraEm < new Date()) {
+      throw new OngError('Este convite expirou. Peça um novo à equipe Bitzy.', 410, 'CONVITE_EXPIRADO');
+    }
+    if (!u.ong.ativa) throw erroBloqueio();
+    return u;
+  }
+
+  async consultarConvite(token) {
+    const u = await this._conviteValido(token);
+    return { email: u.email, nome: u.nome, ongNome: u.ong.nome };
+  }
+
+  async primeiroAcesso(token, senha) {
+    validarSenha(senha);
+    const u = await this._conviteValido(token);
+    const senhaHash = await bcrypt.hash(senha, BCRYPT_COST);
+    // Atômico: se dois cliques/abas usarem o mesmo link, só um passa.
+    const r = await prisma.ongUsuario.updateMany({
+      where: { id: u.id, status: 'CONVIDADO', conviteTokenHash: sha256(token), conviteExpiraEm: { gt: new Date() } },
+      data: { senhaHash, status: 'ATIVO', conviteTokenHash: null, conviteExpiraEm: null },
+    });
+    if (r.count === 0) throw new OngError(MSG_LINK, 404, 'CONVITE_INVALIDO');
+    return { email: u.email };
+  }
+
+  // ── Login / sessão ────────────────────────────────────────────────────────
+  async login(email, senha) {
+    const u = await prisma.ongUsuario.findUnique({ where: { email: normEmail(email) }, include: incluirOng });
+    const ok = await bcrypt.compare(String(senha || ''), u?.senhaHash || HASH_FALSO);
+    if (!u || !u.senhaHash || !ok) throw new OngError(MSG_CREDENCIAIS, 401, 'CREDENCIAIS_INVALIDAS');
+    // Só depois de acertar a senha dizemos que está bloqueado (não revela e-mails).
+    if (bloqueado(u)) throw erroBloqueio();
+
+    await prisma.ongUsuario.update({ where: { id: u.id }, data: { ultimoLoginEm: new Date() } });
+    const refreshToken = await emitirRefresh(u.id);
+    return { accessToken: assinarAcesso(u), refreshToken, ...serializarSessao(u) };
+  }
+
+  async refresh(rawToken) {
+    const nao = () => new OngError('Sessão expirada.', 401, 'SESSAO_EXPIRADA');
+    if (!rawToken || !TOKEN_FORMATO.test(rawToken)) throw nao();
+
+    const t = await prisma.ongRefreshToken.findUnique({
+      where: { tokenHash: sha256(rawToken) },
+      include: { usuario: { include: incluirOng } },
+    });
+    if (!t || t.revogadoEm || t.expiraEm < new Date()) throw nao();
+
+    if (t.usadoEm) {
+      // Token já trocado. Logo depois: provável corrida entre abas (só recusa). Muito depois: reuso suspeito → derruba a sessão.
+      if (Date.now() - t.usadoEm.getTime() > GRACE_REFRESH_MS) await this._revogarFamilia(t.familiaId);
+      throw nao();
+    }
+    if (bloqueado(t.usuario) || t.usuario.status !== 'ATIVO') {
+      await this._revogarFamilia(t.familiaId);
+      throw erroBloqueio();
+    }
+
+    // Rotação atômica: só uma requisição consegue "gastar" este token.
+    const r = await prisma.ongRefreshToken.updateMany({
+      where: { id: t.id, usadoEm: null, revogadoEm: null },
+      data: { usadoEm: new Date() },
+    });
+    if (r.count === 0) throw nao();
+
+    const refreshToken = await emitirRefresh(t.usuarioId, t.familiaId);
+    return { accessToken: assinarAcesso(t.usuario), refreshToken };
+  }
+
+  async _revogarFamilia(familiaId) {
+    await prisma.ongRefreshToken.updateMany({ where: { familiaId, revogadoEm: null }, data: { revogadoEm: new Date() } });
+  }
+
+  async logout(rawToken) {
+    if (!rawToken || !TOKEN_FORMATO.test(rawToken)) return;
+    const t = await prisma.ongRefreshToken.findUnique({ where: { tokenHash: sha256(rawToken) } });
+    if (t) await this._revogarFamilia(t.familiaId);
+  }
+
+  async me(usuarioId) {
+    const u = await prisma.ongUsuario.findUnique({ where: { id: usuarioId }, include: incluirOng });
+    if (!u) throw new OngError('Sessão expirada.', 401, 'SESSAO_EXPIRADA');
+    if (bloqueado(u)) throw erroBloqueio();
+    return serializarSessao(u);
+  }
+
+  // ── Recuperação de senha ──────────────────────────────────────────────────
+  // Resposta SEMPRE igual (existindo ou não o e-mail), para não revelar quem tem acesso.
+  async esqueciSenha(email) {
+    const u = await prisma.ongUsuario.findUnique({ where: { email: normEmail(email) }, include: incluirOng });
+    if (!u || u.status !== 'ATIVO' || !u.ong.ativa) return;
+
+    const raw = novoToken();
+    await prisma.$transaction([
+      prisma.ongResetToken.deleteMany({ where: { usuarioId: u.id, usadoEm: null } }),
+      prisma.ongResetToken.create({
+        data: { usuarioId: u.id, tokenHash: sha256(raw), expiraEm: new Date(Date.now() + RESET_VALIDADE_MS) },
+      }),
+    ]);
+    const link = `${env.ongPortalUrl}/redefinir-senha?token=${raw}`;
+    try {
+      await emailService.sendOngResetSenha(u.email, u.nome, link);
+    } catch (e) {
+      console.error('Falha ao enviar e-mail de redefinição (ONG):', e.message);
+    }
+  }
+
+  async redefinirSenha(token, senha) {
+    validarSenha(senha);
+    const invalido = () => new OngError('Este link é inválido ou expirou. Peça um novo.', 410, 'RESET_INVALIDO');
+    if (!TOKEN_FORMATO.test(String(token || ''))) throw invalido();
+
+    const hash = sha256(token);
+    const t = await prisma.ongResetToken.findUnique({
+      where: { tokenHash: hash },
+      include: { usuario: { include: incluirOng } },
+    });
+    if (!t || t.usadoEm || t.expiraEm < new Date() || t.usuario.status !== 'ATIVO' || !t.usuario.ong.ativa) {
+      throw invalido();
+    }
+
+    const senhaHash = await bcrypt.hash(senha, BCRYPT_COST);
+    const r = await prisma.ongResetToken.updateMany({
+      where: { id: t.id, usadoEm: null, expiraEm: { gt: new Date() } },
+      data: { usadoEm: new Date() },
+    });
+    if (r.count === 0) throw invalido();
+
+    await prisma.$transaction([
+      prisma.ongUsuario.update({ where: { id: t.usuarioId }, data: { senhaHash } }),
+      // Trocou a senha: todas as sessões abertas caem.
+      prisma.ongRefreshToken.updateMany({ where: { usuarioId: t.usuarioId, revogadoEm: null }, data: { revogadoEm: new Date() } }),
+    ]);
+  }
+}
+
+module.exports = new OngAuthService();
+module.exports.sha256 = sha256;
+
+
+================================================================
+ARQUIVO: src/services/ongAcessoService.js
+================================================================
+
+// src/services/ongAcessoService.js
+// Gestão do ACESSO das ONGs ao portal e acompanhamento da ONG, para o admin do CRM
+// (chamado só por rotas /internal, protegidas pela chave servidor-a-servidor).
+const crypto = require('crypto');
+const prisma = require('../config/database');
+const env = require('../config/env');
+const emailService = require('./emailService');
+const adocaoAdminService = require('./adocaoAdminService');
+const ongRepository = require('../repositories/ongRepository');
+const { AppError } = require('../middlewares/errorHandler');
+
+const CONVITE_VALIDADE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
+
+const sha256 = (txt) => crypto.createHash('sha256').update(txt).digest('hex');
+const novoToken = () => crypto.randomBytes(32).toString('base64url');
+const emailNormalizado = (e) => String(e).trim().toLowerCase();
+
+// Status mostrado ao admin. O convite que venceu vira CONVITE_EXPIRADO (não é gravado).
+function statusDoAcesso(u) {
+  if (u.status === 'CONVIDADO' && (!u.conviteExpiraEm || u.conviteExpiraEm < new Date())) {
+    return 'CONVITE_EXPIRADO';
+  }
+  return u.status;
+}
+
+function serializarAcesso(u) {
+  if (!u) return null;
+  return {
+    usuarioId: u.id,
+    nome: u.nome,
+    email: u.email,
+    status: statusDoAcesso(u),
+    conviteEnviadoEm: u.conviteEnviadoEm,
+    conviteExpiraEm: u.status === 'CONVIDADO' ? u.conviteExpiraEm : null,
+    ultimoLoginEm: u.ultimoLoginEm,
+  };
+}
+
+const ACESSO_SELECT = {
+  id: true, nome: true, email: true, status: true,
+  conviteEnviadoEm: true, conviteExpiraEm: true, ultimoLoginEm: true,
+};
+
+// { [ongId]: { [status]: n } }
+function contagensPorOng(linhas) {
+  const out = {};
+  for (const l of linhas) {
+    out[l.ongId] ??= {};
+    out[l.ongId][l.status] = l._count._all;
+  }
+  return out;
+}
+
+class OngAcessoService {
+  // ── Lista ─────────────────────────────────────────────────────────────────
+  async listar() {
+    const [ongs, animais, interesses, ajudas] = await Promise.all([
+      prisma.ong.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, nome: true, tipo: true, cidade: true, estado: true, logoUrl: true,
+          verificada: true, ativa: true, createdAt: true,
+          usuarios: { select: ACESSO_SELECT, orderBy: { createdAt: 'asc' }, take: 1 },
+        },
+      }),
+      prisma.animalAdocao.groupBy({ by: ['ongId', 'status'], _count: { _all: true } }),
+      prisma.interesseAdocao.groupBy({ by: ['ongId', 'status'], _count: { _all: true } }),
+      prisma.ajudaOng.groupBy({ by: ['ongId', 'status'], _count: { _all: true } }),
+    ]);
+
+    const a = contagensPorOng(animais);
+    const i = contagensPorOng(interesses);
+    const j = contagensPorOng(ajudas);
+
+    return ongs.map((o) => ({
+      id: o.id,
+      nome: o.nome,
+      tipo: o.tipo,
+      cidade: o.cidade,
+      estado: o.estado,
+      logoUrl: o.logoUrl,
+      verificada: o.verificada,
+      ativa: o.ativa,
+      createdAt: o.createdAt,
+      acesso: serializarAcesso(o.usuarios[0]),
+      resumo: {
+        animaisDisponiveis: a[o.id]?.DISPONIVEL ?? 0,
+        interessesNovos: i[o.id]?.ENVIADO ?? 0,
+        ajudasNovas: j[o.id]?.ENVIADA ?? 0,
+      },
+    }));
+  }
+
+  // ── Detalhe e acompanhamento ──────────────────────────────────────────────
+  async detalhar(id) {
+    const ong = await prisma.ong.findUnique({
+      where: { id },
+      include: { usuarios: { select: ACESSO_SELECT, orderBy: { createdAt: 'asc' }, take: 1 } },
+    });
+    if (!ong) throw new AppError('ONG não encontrada.', 404);
+
+    const desde30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const [animais, interesses, ajudas, publicados, ultAnimal, ultInteresse, ultAjuda, adocoes30d] = await Promise.all([
+      prisma.animalAdocao.groupBy({ by: ['status'], where: { ongId: id }, _count: { _all: true } }),
+      prisma.interesseAdocao.groupBy({ by: ['status'], where: { ongId: id }, _count: { _all: true } }),
+      prisma.ajudaOng.groupBy({ by: ['status'], where: { ongId: id }, _count: { _all: true } }),
+      prisma.animalAdocao.count({ where: { ongId: id, publicado: true, status: 'DISPONIVEL' } }),
+      prisma.animalAdocao.aggregate({ where: { ongId: id }, _max: { updatedAt: true } }),
+      prisma.interesseAdocao.aggregate({ where: { ongId: id }, _max: { updatedAt: true } }),
+      prisma.ajudaOng.aggregate({ where: { ongId: id }, _max: { updatedAt: true } }),
+      prisma.interesseAdocao.count({ where: { ongId: id, status: 'ADOCAO_CONFIRMADA', updatedAt: { gte: desde30d } } }),
+    ]);
+
+    const porStatus = (linhas) => Object.fromEntries(linhas.map((l) => [l.status, l._count._all]));
+    const datas = [ultAnimal._max.updatedAt, ultInteresse._max.updatedAt, ultAjuda._max.updatedAt].filter(Boolean);
+    const acesso = serializarAcesso(ong.usuarios[0]);
+
+    // Checklist do cadastro: regras no backend para o admin e o portal falarem a mesma língua.
+    const checklist = [
+      { chave: 'acesso', label: 'Acesso ao portal ativo', ok: acesso?.status === 'ATIVO' },
+      { chave: 'logo', label: 'Logo enviada', ok: Boolean(ong.logoUrl) },
+      { chave: 'whatsapp', label: 'WhatsApp informado', ok: Boolean(ong.whatsapp) },
+      { chave: 'processo', label: 'Processo de adoção descrito', ok: (ong.processoAdocao ?? []).length > 0 },
+      { chave: 'pix', label: 'PIX configurado', ok: Boolean(ong.pixChave && ong.pixTitular) },
+      { chave: 'animal', label: 'Ao menos um animal disponível e publicado', ok: publicados > 0 },
+    ];
+
+    return {
+      ong: {
+        id: ong.id, nome: ong.nome, tipo: ong.tipo, descricao: ong.descricao, logoUrl: ong.logoUrl,
+        cidade: ong.cidade, estado: ong.estado, bairro: ong.bairro, whatsapp: ong.whatsapp,
+        instagramUrl: ong.instagramUrl, siteUrl: ong.siteUrl,
+        verificada: ong.verificada, ativa: ong.ativa, createdAt: ong.createdAt,
+        temPix: Boolean(ong.pixChave),
+      },
+      acesso,
+      atividade: {
+        animais: porStatus(animais),
+        interesses: porStatus(interesses),
+        ajudas: porStatus(ajudas),
+        animaisPublicados: publicados,
+        adocoesConfirmadas30d: adocoes30d,
+        ultimaAtividadeEm: datas.length ? new Date(Math.max(...datas.map((d) => d.getTime()))) : null,
+      },
+      checklist,
+    };
+  }
+
+  // ── Cadastro e situação da ONG ────────────────────────────────────────────
+  // Reaproveita a regra do admin do Bitzy (duplicidade, arredondar localização de protetor).
+  async criarOng(dados) {
+    return adocaoAdminService.criarOng(dados);
+  }
+
+  // `verificada` (selo + PIX no app) e `ativa` só mudam por aqui, nunca pelo portal da ONG.
+  async alterarSituacao(id, { ativa, verificada }) {
+    await adocaoAdminService.buscarOng(id);
+    const dados = {};
+    if (typeof ativa === 'boolean') dados.ativa = ativa;
+    if (typeof verificada === 'boolean') dados.verificada = verificada;
+    if (!Object.keys(dados).length) throw new AppError('Nada para alterar.', 400);
+    await ongRepository.update(id, dados);
+    return { ativa, verificada, ...dados };
+  }
+
+  // ── Acesso (convite) ──────────────────────────────────────────────────────
+  // Gera o convite (ou reenvia, se ainda não foi usado). O link sai UMA vez, aqui.
+  async gerarConvite(ongId, { nome, email }, criadoPor) {
+    const ong = await adocaoAdminService.buscarOng(ongId);
+    if (!ong.ativa) throw new AppError('Reative a ONG antes de gerar o acesso.', 409);
+
+    const emailFinal = emailNormalizado(email);
+    const existente = await prisma.ongUsuario.findFirst({ where: { ongId }, orderBy: { createdAt: 'asc' } });
+
+    if (existente?.status === 'ATIVO') {
+      throw new AppError('Esta ONG já tem acesso ativo.', 409, 'ACESSO_JA_ATIVO');
+    }
+    if (existente?.status === 'BLOQUEADO') {
+      throw new AppError('O acesso está bloqueado. Reative antes de enviar novo convite.', 409, 'ACESSO_BLOQUEADO');
+    }
+
+    const emUso = await prisma.ongUsuario.findUnique({ where: { email: emailFinal }, select: { id: true } });
+    if (emUso && emUso.id !== existente?.id) {
+      throw new AppError('Este e-mail já é usado por outra ONG.', 409, 'EMAIL_EM_USO');
+    }
+
+    const token = novoToken();
+    const agora = new Date();
+    const dadosConvite = {
+      nome: String(nome).trim(),
+      email: emailFinal,
+      status: 'CONVIDADO',
+      conviteTokenHash: sha256(token),
+      conviteExpiraEm: new Date(agora.getTime() + CONVITE_VALIDADE_MS),
+      conviteEnviadoEm: agora,
+      criadoPor: criadoPor ?? null,
+    };
+
+    const usuario = existente
+      ? await prisma.ongUsuario.update({ where: { id: existente.id }, data: dadosConvite, select: ACESSO_SELECT })
+      : await prisma.ongUsuario.create({ data: { ongId, ...dadosConvite }, select: ACESSO_SELECT });
+
+    const conviteUrl = `${env.ongPortalUrl}/primeiro-acesso?token=${encodeURIComponent(token)}`;
+
+    // Falha de e-mail não derruba a geração: o admin ainda pode copiar o link.
+    let emailEnviado = true;
+    try {
+      await emailService.sendOngConvite(emailFinal, dadosConvite.nome, ong.nome, conviteUrl);
+    } catch (err) {
+      emailEnviado = false;
+      console.error('[OngAcesso] Falha ao enviar e-mail de convite:', err.message);
+    }
+
+    return { acesso: serializarAcesso(usuario), conviteUrl, emailEnviado };
+  }
+
+  // Convite ainda não usado: apagar o registro (nada foi aberto). Acesso ATIVO só bloqueia.
+  async revogarConvite(ongId) {
+    const u = await prisma.ongUsuario.findFirst({ where: { ongId }, orderBy: { createdAt: 'asc' } });
+    if (!u) throw new AppError('Esta ONG não tem convite.', 404);
+    if (u.status !== 'CONVIDADO') {
+      throw new AppError('Só dá para revogar um convite ainda não usado. Para acesso ativo, use "Bloquear".', 409);
+    }
+    await prisma.ongUsuario.delete({ where: { id: u.id } });
+    return { ok: true };
+  }
+
+  async alterarStatusAcesso(ongId, bloqueado) {
+    const u = await prisma.ongUsuario.findFirst({ where: { ongId }, orderBy: { createdAt: 'asc' } });
+    if (!u) throw new AppError('Esta ONG não tem acesso criado.', 404);
+
+    if (bloqueado) {
+      // Bloqueia e invalida qualquer convite pendente.
+      const r = await prisma.ongUsuario.update({
+        where: { id: u.id },
+        data: { status: 'BLOQUEADO', conviteTokenHash: null, conviteExpiraEm: null },
+        select: ACESSO_SELECT,
+      });
+      return serializarAcesso(r);
+    }
+
+    if (u.status !== 'BLOQUEADO') throw new AppError('O acesso não está bloqueado.', 409);
+    // Quem já definiu senha volta a ATIVO; quem nunca entrou precisa de um convite novo.
+    if (!u.senhaHash) {
+      const r = await prisma.ongUsuario.update({ where: { id: u.id }, data: { status: 'CONVIDADO' }, select: ACESSO_SELECT });
+      return serializarAcesso(r);
+    }
+    const r = await prisma.ongUsuario.update({ where: { id: u.id }, data: { status: 'ATIVO' }, select: ACESSO_SELECT });
+    return serializarAcesso(r);
+  }
+}
+
+module.exports = new OngAcessoService();
+
+
+================================================================
+ARQUIVO: src/utils/ongPortalCommon.js
+================================================================
+
+// src/utils/ongPortalCommon.js
+// Peças compartilhadas pelos serviços /ong-portal: paginação por cursor, datas (fuso de São Paulo), validação.
+const { OngError } = require('./ongErrors');
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const invalido = (msg) => new OngError(msg, 400, 'VALIDACAO');
+const conflito = (msg) => new OngError(msg, 409, 'CONFLITO');
+const naoEncontrado = (msg) => new OngError(msg, 404, 'NAO_ENCONTRADO');
+
+// ── Cursor (keyset: createdAt desc, id desc) ────────────────────────────────
+const ORDEM = [{ createdAt: 'desc' }, { id: 'desc' }];
+const LIMITE_PADRAO = 20;
+
+function limiteDe(v) {
+  if (v === undefined || v === '') return LIMITE_PADRAO;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 50) throw invalido('Limite inválido (1 a 50).');
+  return n;
+}
+
+const codificarCursor = (r) => Buffer.from(`${r.createdAt.toISOString()}|${r.id}`).toString('base64url');
+
+function decodificarCursor(c) {
+  if (c === undefined || c === '') return null;
+  try {
+    const [d, id] = Buffer.from(String(c), 'base64url').toString().split('|');
+    const data = new Date(d);
+    if (Number.isNaN(data.getTime()) || !UUID.test(id)) throw new Error('x');
+    return { data, id };
+  } catch {
+    throw invalido('Cursor inválido.');
+  }
+}
+
+function filtroCursor(cur) {
+  if (!cur) return {};
+  return { OR: [{ createdAt: { lt: cur.data } }, { createdAt: cur.data, id: { lt: cur.id } }] };
+}
+
+/** Roda uma consulta paginada. `consulta({ where, orderBy, take })` deve devolver linhas com createdAt e id. */
+async function paginar({ where, cursor, limite, consulta }) {
+  const lim = limiteDe(limite);
+  const cur = decodificarCursor(cursor);
+  const linhas = await consulta({ where: { AND: [where, filtroCursor(cur)] }, orderBy: ORDEM, take: lim + 1 });
+  const temMais = linhas.length > lim;
+  const pagina = temMais ? linhas.slice(0, lim) : linhas;
+  return { pagina, proximoCursor: temMais ? codificarCursor(pagina[pagina.length - 1]) : null };
+}
+
+// ── Datas no fuso de São Paulo (UTC-3 o ano todo desde 2019) ────────────────
+const FUSO = 'America/Sao_Paulo';
+const fmtDia = new Intl.DateTimeFormat('en-CA', { timeZone: FUSO, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+const diaSP = (d) => fmtDia.format(d); // YYYY-MM-DD
+const inicioDoDiaSP = (ymd) => new Date(`${ymd}T00:00:00-03:00`);
+function somarDias(ymd, n) {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// ── Validação ────────────────────────────────────────────────────────────────
+function exigirUuid(v, rotulo = 'id') {
+  if (typeof v !== 'string' || !UUID.test(v)) throw naoEncontrado('Não encontrado.');
+  return v;
+}
+
+/** Recusa campos fora da lista (ex.: ongId, verificada, status): nada de "mass assignment". */
+function soCamposPermitidos(body, permitidos) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw invalido('Corpo da requisição inválido.');
+  const extra = Object.keys(body).filter((k) => !permitidos.includes(k));
+  if (extra.length) throw invalido(`Campo não permitido: ${extra[0]}.`);
+}
+
+function texto(v, rotulo, { min = 0, max, nulavel = false } = {}) {
+  if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) {
+    if (min > 0) throw invalido(`${rotulo} é obrigatório.`);
+    if (nulavel) return null;
+    throw invalido(`${rotulo} é obrigatório.`);
+  }
+  if (typeof v !== 'string') throw invalido(`${rotulo} inválido.`);
+  const t = v.trim();
+  if (t.length < min) throw invalido(`${rotulo} precisa ter ao menos ${min} caracteres.`);
+  if (t.length > max) throw invalido(`${rotulo} pode ter no máximo ${max} caracteres.`);
+  return t;
+}
+
+function numero(v, rotulo, { min, max, inteiro = false } = {}) {
+  if (v === null || v === undefined) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw invalido(`${rotulo} inválido.`);
+  if (inteiro && !Number.isInteger(v)) throw invalido(`${rotulo} deve ser um número inteiro.`);
+  if (v < min || v > max) throw invalido(`${rotulo} deve estar entre ${min} e ${max}.`);
+  return v;
+}
+
+function booleano(v, rotulo, { nulavel = false } = {}) {
+  if (v === null || v === undefined) {
+    if (nulavel) return null;
+    throw invalido(`${rotulo} é obrigatório.`);
+  }
+  if (typeof v !== 'boolean') throw invalido(`${rotulo} inválido.`);
+  return v;
+}
+
+function enumerado(v, lista, rotulo, { nulavel = false } = {}) {
+  if ((v === null || v === undefined) && nulavel) return null;
+  if (!lista.includes(v)) throw invalido(`${rotulo} inválido.`);
+  return v;
+}
+
+function listaEnum(v, lista, rotulo, max = 10) {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > max) throw invalido(`${rotulo} inválido.`);
+  const u = [...new Set(v)];
+  for (const x of u) if (!lista.includes(x)) throw invalido(`${rotulo} inválido.`);
+  return u;
+}
+
+function listaTexto(v, rotulo, { max, tamanho }) {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > max) throw invalido(`${rotulo}: no máximo ${max} itens.`);
+  return v.map((x, i) => texto(x, `${rotulo} (${i + 1})`, { min: 1, max: tamanho }));
+}
+
+function urlHttp(v, rotulo) {
+  const t = texto(v, rotulo, { max: 300, nulavel: true });
+  if (t === null) return null;
+  let u;
+  try { u = new URL(t); } catch { throw invalido(`${rotulo} inválido.`); }
+  if (!['http:', 'https:'].includes(u.protocol)) throw invalido(`${rotulo} deve começar com http:// ou https://.`);
+  return u.toString();
+}
+
+const dataISO = (v, rotulo) => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v))) {
+    throw invalido(`${rotulo} inválida (use AAAA-MM-DD).`);
+  }
+  return v;
+};
+
+module.exports = {
+  UUID, invalido, conflito, naoEncontrado,
+  limiteDe, paginar, ORDEM,
+  FUSO, diaSP, inicioDoDiaSP, somarDias,
+  exigirUuid, soCamposPermitidos, texto, numero, booleano, enumerado, listaEnum, listaTexto, urlHttp, dataISO,
+};
+
+
+================================================================
+ARQUIVO: src/utils/ongErrors.js
+================================================================
+
+// src/utils/ongErrors.js
+// Erro com `code` legível pelo portal (ex.: ONG_BLOQUEADA). Independe de o AppError do projeto aceitar `code`.
+const { AppError } = require('../middlewares/errorHandler');
+
+class OngError extends AppError {
+  constructor(message, statusCode, code) {
+    super(message, statusCode);
+    this.statusCode = statusCode;
+    this.status = statusCode;
+    this.code = code;
+    this.isOngError = true;
+  }
+}
+
+// Montado no FIM do router /ong-portal: devolve { status, message, code } para os OngError
+// e deixa o errorHandler global cuidar do resto.
+// eslint-disable-next-line no-unused-vars
+function ongErrorHandler(err, req, res, next) {
+  if (err && err.isOngError) {
+    return res.status(err.statusCode).json({ status: 'fail', message: err.message, code: err.code });
+  }
+  return next(err);
+}
+
+module.exports = { OngError, ongErrorHandler };
+
+
+================================================================
+ARQUIVO: src/utils/ongImagens.js
+================================================================
+
+// src/utils/ongImagens.js
+// Só aceitamos URLs de imagens que o PRÓPRIO backend subiu no Cloudinary para ESTA ONG
+// (pasta bitzy/ong/<ongId>/<tipo>/). Evita apontar para sites de terceiros (rastreamento, conteúdo malicioso)
+// e usar imagem enviada por outra ONG.
+const { invalido } = require('./ongPortalCommon');
+
+const TIPOS = { 'animal-foto': 'animais', 'ong-logo': 'logos', 'ong-banner': 'banners' };
+
+function prefixo(ongId, pasta) {
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+  if (!cloud) throw new Error('CLOUDINARY_CLOUD_NAME não configurado');
+  return { host: 'res.cloudinary.com', caminho: `/${cloud}/image/upload/`, pasta: `/bitzy/ong/${ongId}/${pasta}/` };
+}
+
+function validarUrlImagem(url, ongId, tipo, rotulo = 'Imagem') {
+  const pasta = TIPOS[tipo];
+  let u;
+  try { u = new URL(url); } catch { throw invalido(`${rotulo} inválida.`); }
+  const p = prefixo(ongId, pasta);
+  const okHost = u.protocol === 'https:' && u.hostname === p.host && !u.username && !u.password && !u.search && !u.hash;
+  if (!okHost || !u.pathname.startsWith(p.caminho) || !u.pathname.includes(p.pasta)) {
+    throw invalido(`${rotulo} inválida. Envie o arquivo pelo portal.`);
+  }
+  return u.toString();
+}
+
+module.exports = { validarUrlImagem, TIPOS };
+
+
+================================================================
+ARQUIVO: src/services/ongPortalAnimaisService.js
+================================================================
+
+// src/services/ongPortalAnimaisService.js
+// Animais da ONG. `ongId` vem SEMPRE do token; animal de outra ONG responde 404.
+const prisma = require('../config/database');
+const C = require('../utils/ongPortalCommon');
+const { validarUrlImagem } = require('../utils/ongImagens');
+const notificationService = require('./notificationService');
+
+const ESPECIES = ['CACHORRO', 'GATO'];
+const SEXOS = ['MACHO', 'FEMEA'];
+const PORTES = ['PEQUENO', 'MEDIO', 'GRANDE'];
+const FASES = ['FILHOTE', 'ADULTO', 'IDOSO'];
+const STATUS = ['DISPONIVEL', 'EM_PROCESSO', 'ADOTADO', 'INDISPONIVEL'];
+const COMPORTAMENTOS = ['CALMO', 'AGITADO', 'SOCIAVEL', 'TIMIDO', 'AGRESSIVO', 'BRINCALHAO'];
+const CONVIVENCIAS = ['CRIANCAS', 'OUTROS_CAES', 'GATOS', 'ESTRANHOS', 'IDOSOS'];
+const CATEGORIAS_VACINA = ['vaccine', 'dewormer', 'other'];
+const INTERESSE_ATIVO = ['ENVIADO', 'EM_CONTATO'];
+const MAX_FOTOS = 10;
+
+const CAMPOS_INPUT = [
+  'nome', 'especie', 'sexo', 'porte', 'historia', 'faseVida', 'idadeMeses', 'raca', 'cor', 'pesoKg',
+  'temperamento', 'convivencia', 'convivenciaNaoRecomendada', 'castrado', 'vacinado', 'vermifugado',
+  'necessidadesEspeciais', 'larTemporario', 'vacinas', 'apadrinhamentoAtivo', 'apadrinhamentoValorSugerido', 'apadrinhamentoCobre',
+];
+
+function validarVacinas(v) {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > 30) throw C.invalido('Vacinas: no máximo 30 itens.');
+  return v.map((x, i) => {
+    if (!x || typeof x !== 'object') throw C.invalido(`Vacina ${i + 1} inválida.`);
+    return {
+      nome: C.texto(x.nome, 'Nome da vacina', { min: 1, max: 100 }),
+      categoria: C.enumerado(x.categoria, CATEGORIAS_VACINA, 'Categoria da vacina'),
+      dataAplicacao: C.dataISO(x.dataAplicacao, 'Data de aplicação'),
+      proximaDose: x.proximaDose ? C.dataISO(x.proximaDose, 'Próxima dose') : null,
+      observacoes: C.texto(x.observacoes, 'Observações da vacina', { max: 300, nulavel: true }),
+    };
+  });
+}
+
+/** Valida e normaliza o AnimalInput (mesmos limites do validador do app/admin). */
+function validarAnimal(b) {
+  C.soCamposPermitidos(b, [...CAMPOS_INPUT, 'publicado']);
+  const apadAtivo = C.booleano(b.apadrinhamentoAtivo ?? false, 'Apadrinhamento');
+  return {
+    nome: C.texto(b.nome, 'Nome', { min: 1, max: 60 }),
+    especie: C.enumerado(b.especie, ESPECIES, 'Espécie'),
+    sexo: C.enumerado(b.sexo, SEXOS, 'Sexo'),
+    porte: C.enumerado(b.porte, PORTES, 'Porte'),
+    historia: C.texto(b.historia, 'História', { min: 10, max: 4000 }),
+    faseVida: C.enumerado(b.faseVida ?? null, FASES, 'Fase da vida', { nulavel: true }),
+    idadeMeses: C.numero(b.idadeMeses, 'Idade', { min: 0, max: 400, inteiro: true }),
+    raca: C.texto(b.raca, 'Raça', { max: 80, nulavel: true }),
+    cor: C.texto(b.cor, 'Cor', { max: 60, nulavel: true }),
+    pesoKg: C.numero(b.pesoKg, 'Peso', { min: 0.1, max: 120 }),
+    temperamento: C.listaEnum(b.temperamento, COMPORTAMENTOS, 'Temperamento'),
+    convivencia: C.listaEnum(b.convivencia, CONVIVENCIAS, 'Convivência'),
+    convivenciaNaoRecomendada: C.listaEnum(b.convivenciaNaoRecomendada, CONVIVENCIAS, 'Convivência não recomendada'),
+    castrado: C.booleano(b.castrado, 'Castrado', { nulavel: true }),
+    vacinado: C.booleano(b.vacinado, 'Vacinado', { nulavel: true }),
+    vermifugado: C.booleano(b.vermifugado, 'Vermifugado', { nulavel: true }),
+    necessidadesEspeciais: C.texto(b.necessidadesEspeciais, 'Necessidades especiais', { max: 1000, nulavel: true }),
+    larTemporario: C.booleano(b.larTemporario ?? false, 'Lar temporário'),
+    vacinas: validarVacinas(b.vacinas),
+    apadrinhamentoAtivo: apadAtivo,
+    // Sem apadrinhamento ativo, valor e descrição não ficam gravados.
+    apadrinhamentoValorSugerido: apadAtivo ? C.numero(b.apadrinhamentoValorSugerido, 'Valor sugerido', { min: 1, max: 100000 }) : null,
+    apadrinhamentoCobre: apadAtivo ? C.texto(b.apadrinhamentoCobre, 'O que o apadrinhamento cobre', { max: 200, nulavel: true }) : null,
+  };
+}
+
+function detalhe(a) {
+  return {
+    id: a.id, nome: a.nome, especie: a.especie, sexo: a.sexo, porte: a.porte, historia: a.historia,
+    faseVida: a.faseVida, idadeMeses: a.idadeMeses, raca: a.raca, cor: a.cor, pesoKg: a.pesoKg,
+    temperamento: a.temperamento, convivencia: a.convivencia, convivenciaNaoRecomendada: a.convivenciaNaoRecomendada,
+    castrado: a.castrado, vacinado: a.vacinado, vermifugado: a.vermifugado,
+    necessidadesEspeciais: a.necessidadesEspeciais, larTemporario: a.larTemporario,
+    vacinas: Array.isArray(a.vacinas) ? a.vacinas : [],
+    apadrinhamentoAtivo: a.apadrinhamentoAtivo, apadrinhamentoValorSugerido: a.apadrinhamentoValorSugerido,
+    apadrinhamentoCobre: a.apadrinhamentoCobre,
+    fotos: a.fotos, status: a.status, publicado: a.publicado, createdAt: a.createdAt,
+  };
+}
+
+async function avisarInteressadosAdotado(animal, ignorarUserId = null) {
+  const interessados = await prisma.interesseAdocao.findMany({
+    where: { animalId: animal.id, status: { in: INTERESSE_ATIVO } },
+    select: { userId: true },
+  });
+  await Promise.allSettled(
+    interessados.filter((i) => i.userId !== ignorarUserId).map((i) =>
+      notificationService.notificar(i.userId, {
+        titulo: `${animal.nome} encontrou um lar 💛`,
+        mensagem: 'Outros amigos esperam por uma família. Que tal conhecer?',
+        tipo: 'SISTEMA',
+        pathKey: '/adocao',
+      }),
+    ),
+  );
+}
+
+class OngPortalAnimaisService {
+  async _achar(ongId, id) {
+    C.exigirUuid(id);
+    const a = await prisma.animalAdocao.findFirst({ where: { id, ongId } });
+    if (!a) throw C.naoEncontrado('Animal não encontrado.');
+    return a;
+  }
+
+  async listar(ongId, q) {
+    const where = { ongId };
+    if (q.status !== undefined) where.status = C.enumerado(q.status, STATUS, 'Status');
+    if (q.publicado !== undefined) {
+      if (!['true', 'false'].includes(q.publicado)) throw C.invalido('Filtro de publicação inválido.');
+      where.publicado = q.publicado === 'true';
+    }
+    if (q.busca !== undefined && String(q.busca).trim()) {
+      const b = String(q.busca).trim();
+      if (b.length > 60) throw C.invalido('Busca muito longa.');
+      where.nome = { contains: b, mode: 'insensitive' };
+    }
+
+    const { pagina, proximoCursor } = await C.paginar({
+      where, cursor: q.cursor, limite: q.limite,
+      consulta: (args) => prisma.animalAdocao.findMany({
+        ...args,
+        select: {
+          id: true, nome: true, especie: true, idadeMeses: true, fotos: true, status: true, publicado: true, createdAt: true,
+          _count: { select: { favoritos: true, interesses: { where: { status: { not: 'CANCELADO' } } } } },
+        },
+      }),
+    });
+    const total = await prisma.animalAdocao.count({ where });
+
+    return {
+      itens: pagina.map((a) => ({
+        id: a.id, nome: a.nome, especie: a.especie, idadeMeses: a.idadeMeses, fotoUrl: a.fotos[0] ?? null,
+        status: a.status, publicado: a.publicado, createdAt: a.createdAt,
+        favoritos: a._count.favoritos, interesses: a._count.interesses,
+        visualizacoes: null, // ainda não existe registro de visualizações
+      })),
+      proximoCursor,
+      total,
+    };
+  }
+
+  async obter(ongId, id) {
+    return detalhe(await this._achar(ongId, id));
+  }
+
+  async criar(ongId, body) {
+    const dados = validarAnimal(body);
+    const publicado = C.booleano(body.publicado, 'Publicado');
+    const a = await prisma.animalAdocao.create({
+      data: {
+        ...dados,
+        ongId, // do token
+        fotos: [],
+        status: 'DISPONIVEL',
+        publicado,
+        publicadoEm: publicado ? new Date() : null,
+      },
+    });
+    return detalhe(a);
+  }
+
+  async atualizar(ongId, id, body) {
+    if (body && typeof body === 'object' && 'publicado' in body) throw C.invalido('Campo não permitido: publicado.');
+    await this._achar(ongId, id);
+    const dados = validarAnimal(body);
+    const r = await prisma.animalAdocao.updateMany({ where: { id, ongId }, data: dados });
+    if (r.count === 0) throw C.naoEncontrado('Animal não encontrado.');
+    return this.obter(ongId, id);
+  }
+
+  async alterarStatus(ongId, id, body) {
+    C.soCamposPermitidos(body, ['status']);
+    const novo = C.enumerado(body.status, STATUS, 'Status');
+    const atual = await this._achar(ongId, id);
+    if (atual.status === novo) return detalhe(atual);
+
+    const data = { status: novo };
+    if (novo === 'ADOTADO') data.adotadoEm = new Date();
+    else if (atual.status === 'ADOTADO') data.adotadoEm = null; // reabrir limpa a data
+
+    // Só muda se ninguém alterou nesse meio-tempo (ex.: adoção confirmada em outra aba).
+    const r = await prisma.animalAdocao.updateMany({ where: { id, ongId, status: atual.status }, data });
+    if (r.count === 0) throw C.conflito('A situação deste animal mudou. Atualize a página e tente de novo.');
+
+    if (novo === 'ADOTADO') await avisarInteressadosAdotado(atual);
+    return this.obter(ongId, id);
+  }
+
+  async alterarPublicacao(ongId, id, body) {
+    C.soCamposPermitidos(body, ['publicado']);
+    const publicado = C.booleano(body.publicado, 'Publicado');
+    const atual = await this._achar(ongId, id);
+    const data = { publicado };
+    if (publicado && !atual.publicadoEm) data.publicadoEm = new Date();
+    await prisma.animalAdocao.updateMany({ where: { id, ongId }, data });
+    return this.obter(ongId, id);
+  }
+
+  async atualizarFotos(ongId, id, body) {
+    C.soCamposPermitidos(body, ['fotos']);
+    if (!Array.isArray(body.fotos) || body.fotos.length > MAX_FOTOS) throw C.invalido(`Envie no máximo ${MAX_FOTOS} fotos.`);
+    await this._achar(ongId, id);
+    const fotos = body.fotos.map((u) => {
+      if (typeof u !== 'string') throw C.invalido('Foto inválida.');
+      return validarUrlImagem(u, ongId, 'animal-foto', 'Foto');
+    });
+    if (new Set(fotos).size !== fotos.length) throw C.invalido('Há fotos repetidas.');
+    await prisma.animalAdocao.updateMany({ where: { id, ongId }, data: { fotos } });
+    return this.obter(ongId, id);
+  }
+}
+
+module.exports = new OngPortalAnimaisService();
+module.exports.validarAnimal = validarAnimal;
+module.exports.avisarInteressadosAdotado = avisarInteressadosAdotado;
+
+
+================================================================
+ARQUIVO: src/controllers/internalOngController.js
+================================================================
+
+// src/controllers/internalOngController.js
+// Chamado só pelo CRM (x-internal-api-key). Não é o portal da ONG.
+const ongAcessoService = require('../services/ongAcessoService');
+const asyncHandler = require('../utils/asyncHandler');
+const { AppError } = require('../middlewares/errorHandler');
+
+const pick = (obj, campos) =>
+  Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => campos.includes(k)));
+
+// Cadastro inicial: o resto (logo, PIX, processo...) a própria ONG preenche no portal.
+const ONG_CRIAR_CAMPOS = ['nome', 'tipo', 'descricao', 'cidade', 'estado', 'bairro', 'latitude', 'longitude', 'whatsapp'];
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+class InternalOngController {
+  listarOngs = asyncHandler(async (req, res) => {
+    const ongs = await ongAcessoService.listar();
+    res.status(200).json({ status: 'success', data: { ongs } });
+  });
+
+  detalharOng = asyncHandler(async (req, res) => {
+    const data = await ongAcessoService.detalhar(req.params.id);
+    res.status(200).json({ status: 'success', data });
+  });
+
+  criarOng = asyncHandler(async (req, res) => {
+    const dados = pick(req.body, ONG_CRIAR_CAMPOS);
+    if (!dados.nome || !dados.descricao || !dados.cidade || !dados.estado) {
+      throw new AppError('Informe nome, descrição, cidade e estado.', 400);
+    }
+    if (!['ONG', 'PROTETOR'].includes(dados.tipo ?? 'ONG')) throw new AppError('Tipo inválido.', 400);
+    const ong = await ongAcessoService.criarOng(dados);
+    res.status(201).json({ status: 'success', data: { ong: { id: ong.id, nome: ong.nome } } });
+  });
+
+  alterarSituacao = asyncHandler(async (req, res) => {
+    const data = await ongAcessoService.alterarSituacao(req.params.id, pick(req.body, ['ativa', 'verificada']));
+    res.status(200).json({ status: 'success', data });
+  });
+
+  gerarConvite = asyncHandler(async (req, res) => {
+    const { nome, email, criadoPor } = req.body ?? {};
+    if (!nome || String(nome).trim().length < 2) throw new AppError('Informe o nome do responsável.', 400);
+    if (!email || !EMAIL_RE.test(String(email).trim())) throw new AppError('E-mail inválido.', 400);
+    const data = await ongAcessoService.gerarConvite(req.params.id, { nome, email }, criadoPor);
+    res.status(201).json({ status: 'success', data });
+  });
+
+  revogarConvite = asyncHandler(async (req, res) => {
+    const data = await ongAcessoService.revogarConvite(req.params.id);
+    res.status(200).json({ status: 'success', data });
+  });
+
+  alterarStatusAcesso = asyncHandler(async (req, res) => {
+    if (typeof req.body?.bloqueado !== 'boolean') throw new AppError('Informe "bloqueado" (true/false).', 400);
+    const acesso = await ongAcessoService.alterarStatusAcesso(req.params.id, req.body.bloqueado);
+    res.status(200).json({ status: 'success', data: { acesso } });
+  });
+}
+
+module.exports = new InternalOngController();
+
+
+================================================================
+ARQUIVO: src/routes/internalRoutes.js
+================================================================
+
+const express = require('express');
+const internalController = require('../controllers/internalController');
+const { authenticateInternal } = require('../middlewares/internalAuth');
+const { uploadSingle } = require('../middlewares/uploadMiddleware');
+const internalOngController = require('../controllers/internalOngController');
+const novidadeInternalRoutes = require('./novidadeInternalRoutes');
+const avaliacaoAppInternalRoutes = require('./avaliacaoAppInternalRoutes');
+const versaoAppInternalRoutes = require('./versaoAppInternalRoutes');
+
+const router = express.Router();
+
+router.use(authenticateInternal);
+
+router.get('/petshops/by-crm/:crmPetshopId/metricas', internalController.metricasPorCrmPetshopId);
+router.post('/petshops/by-crm/:crmPetshopId/cupons', internalController.publicarCupom);
+router.get('/petshops/by-crm/:crmPetshopId/cupons-uso', internalController.usoCuponsPorCrmPetshopId);
+router.post('/vinculo-clinica/gerar-codigo', internalController.gerarCodigoVinculo);
+router.post('/vinculo-clinica/sincronizar-vacina', internalController.sincronizarVacina);
+router.post('/vinculo-clinica/sincronizar-registro', internalController.sincronizarRegistroClinico);
+router.post('/vinculo-clinica/sincronizar-anexo', internalController.sincronizarAnexo);
+
+// ── Gestão de parceiros pelo admin do CRM ──────────────────────────────────
+router.post('/petshops/from-crm', internalController.vincularPetShopDoCrm);
+router.post('/petshops/direto', internalController.criarPetShopDireto);
+router.get('/petshops/direto', internalController.listarPetShopsDiretos);
+router.get('/petshops/:id', internalController.buscarPetShop);
+router.patch('/petshops/:id', internalController.atualizarPetShop);
+router.patch('/petshops/:id/status', internalController.alterarStatusPetShop);
+router.get('/petshops/:id/cupons', internalController.listarCuponsDoPetShop);
+router.post('/petshops/:id/cupons/admin', internalController.criarCupomAdmin);
+router.patch('/cupons/:cupomId', internalController.atualizarCupomAdmin);
+
+// ── Ofertas de produtos ─────────────────────────────────────────────────
+router.get('/petshops/:id/ofertas', internalController.listarOfertasDoPetShop);
+router.post('/petshops/:id/ofertas', internalController.criarOferta);
+router.patch('/ofertas/:ofertaId', internalController.atualizarOferta);
+router.delete('/ofertas/:ofertaId', internalController.removerOferta);
+router.get('/ofertas/cliques', internalController.listarCliques);
+router.post('/ofertas/upload-foto', uploadSingle, internalController.uploadFotoOferta);
+
+router.get('/ongs', internalOngController.listarOngs);
+router.post('/ongs', internalOngController.criarOng);
+router.get('/ongs/:id', internalOngController.detalharOng);
+router.patch('/ongs/:id/situacao', internalOngController.alterarSituacao);
+router.post('/ongs/:id/acesso', internalOngController.gerarConvite);
+router.delete('/ongs/:id/acesso/convite', internalOngController.revogarConvite);
+router.patch('/ongs/:id/acesso/status', internalOngController.alterarStatusAcesso);
+
+router.use('/novidades', novidadeInternalRoutes);
+router.use('/avaliacoes-app', avaliacaoAppInternalRoutes);
+router.use('/config-versao-app', versaoAppInternalRoutes);
+
+module.exports = router;
+
+================================================================
+ARQUIVO: src/middlewares/internalAuth.js
+================================================================
+
+const env = require('../config/env');
+const { AppError } = require('./errorHandler');
+
+/**
+ * Protege rotas de comunicação servidor-a-servidor (ex: o CRM consultando
+ * métricas do Bitzy Club). Não é autenticação de usuário — exige um header
+ * com uma chave secreta compartilhada entre os dois backends, nunca exposta
+ * a clientes finais (app ou browser).
+ */
+function authenticateInternal(req, res, next) {
+  const chaveRecebida = req.headers['x-internal-api-key'];
+
+  if (!env.internalApiKey) {
+    return next(new AppError('INTERNAL_API_KEY não configurada no servidor.', 500));
+  }
+
+  if (!chaveRecebida || chaveRecebida !== env.internalApiKey) {
+    return next(new AppError('Não autorizado.', 401));
+  }
+
+  next();
+}
+
+module.exports = { authenticateInternal };
+
+================================================================
+ARQUIVO: src/routes/index.js
+================================================================
+
+const express = require('express');
+const authRoutes = require('./authRoutes');
+const petRoutes = require('./petRoutes');
+const dashboardRoutes = require('./dashboardRoutes');
+const dicaRoutes = require('./dicaRoutes');
+const analiseRoutes = require('./analiseRoutes');
+const termosRoutes = require('./termosRoutes')
+const salvoRoutes = require('./salvoRoutes')
+const sosRoutes = require('./sosRoutes');
+const clubRoutes = require('./clubRoutes');
+const notificationRoutes = require('./notificationRoutes');
+const adminRoutes = require('./adminRoutes');
+const internalRoutes = require('./internalRoutes');
+const vinculoClinicaRoutes = require('./vinculoClinicaRoutes');
+const adocaoRoutes = require('./adocaoRoutes');
+const ongPortalRoutes = require('./ongPortalRoutes');
+const novidadeRoutes = require('./novidadeRoutes');
+const novidadeInternalRoutes = require('./novidadeInternalRoutes');
+const avaliacaoAppRoutes = require('./avaliacaoAppRoutes');
+const versaoAppRoutes = require('./versaoAppRoutes');
+
+
+const router = express.Router();
+
+// Health check
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'API is running',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// API routes
+router.use('/auth', authRoutes);
+router.use('/pets', petRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/dicas', dicaRoutes);
+router.use('/analises', analiseRoutes);
+router.use('/termos', termosRoutes);
+router.use('/salvos', salvoRoutes);
+router.use('/sos', sosRoutes);
+router.use('/club', clubRoutes);
+router.use('/notificacoes', notificationRoutes);
+router.use('/admin', adminRoutes);
+router.use('/internal', internalRoutes);
+router.use('/vinculo-clinica', vinculoClinicaRoutes);
+router.use('/adocao', adocaoRoutes);
+router.use('/ong-portal', ongPortalRoutes);
+router.use('/novidades', novidadeRoutes);
+router.use('/novidades', novidadeInternalRoutes);
+router.use('/avaliacoes-app', avaliacaoAppRoutes);
+router.use('/app', versaoAppRoutes);
+
+module.exports = router;
+
+================================================================
+ARQUIVO: src/app.js
+================================================================
+
+// src/app.js
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const pinoHttp = require('pino-http');
+const { randomUUID } = require('crypto');
+const config = require('./config/env');
+const logger = require('./config/logger');
+const routes = require('./routes');
+const { errorHandler, AppError } = require('./middlewares/errorHandler');
+const { generalLimiter } = require('./middlewares/rateLimiter');
+const prisma = require('./config/database');
+
+const app = express();
+
+// ── Segurança ─────────────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (config.cors.allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, false); // ← só isso muda
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+
+// ── Structured logging (substitui Morgan) ─────────────────────────────────────
+app.use(pinoHttp({
+  logger,
+  genReqId: (req) => req.headers['x-request-id'] || randomUUID(),
+  customProps: (req) => ({
+    userId: req.user?.id || null,
+  }),
+  customLogLevel: (req, res, err) => {
+    if (err || res.statusCode >= 500) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  },
+  serializers: {
+    req: (req) => ({
+      id:     req.id,
+      method: req.method,
+      url:    req.url,
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode,
+    }),
+  },
+  autoLogging: {
+    ignore: (req) => req.url === '/api/v1/health',
+  },
+}));
+
+// ── Body parsers ──────────────────────────────────────────────────────────────
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/api/v1/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({ status: 'ok', uptime: process.uptime() });
+  } catch {
+    res.status(503).json({ status: 'error' });
+  }
+});
+
+// ── Rate limiting geral + rotas ───────────────────────────────────────────────
+app.use('/api/v1', generalLimiter, routes);
+
+// ── 404 ───────────────────────────────────────────────────────────────────────
+app.all('*', (req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+});
+
+// ── Error handler global ──────────────────────────────────────────────────────
+app.use(errorHandler);
+
+module.exports = app;
+
+================================================================
+ARQUIVO: src/config/env.js
+================================================================
+
+// src/config/env.js
+require('dotenv').config();
+
+const isProd = process.env.NODE_ENV === 'production';
+
+// Em produção, falha cedo se os segredos estiverem ausentes, curtos ou iguais.
+if (isProd) {
+  for (const k of ['JWT_SECRET', 'ONG_JWT_SECRET']) {
+    if (!process.env[k] || process.env[k].length < 32) {
+      throw new Error(`${k} ausente ou curto (mín. 32 caracteres)`);
+    }
+  }
+  if (process.env.ONG_JWT_SECRET === process.env.JWT_SECRET) {
+    throw new Error('ONG_JWT_SECRET deve ser diferente de JWT_SECRET');
+  }
+}
+
+module.exports = {
+  port: process.env.PORT || 3000,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  databaseUrl: process.env.DATABASE_URL,
+  jwt: {
+    // Sem fallback em produção (a validação acima já garante que existe).
+    secret: process.env.JWT_SECRET || (isProd ? undefined : 'dev-only-secret'),
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  },
+  ongPortal: {
+    // SEGREDO PRÓPRIO, diferente do JWT_SECRET do app: um token de ONG nunca vale no app nem no admin, e vice-versa.
+    // Sem fallback: se faltar, as rotas do portal respondem 503.
+    jwtSecret: process.env.ONG_JWT_SECRET,
+    accessTtl: process.env.ONG_ACCESS_TTL || '15m',
+    refreshTtlDias: Number(process.env.ONG_REFRESH_TTL_DIAS || 30),
+    // Produção: .bitzy.com.br (cookie compartilhado entre ong.bitzy.com.br e a API). Em dev: vazio.
+    cookieDomain: process.env.ONG_COOKIE_DOMAIN || undefined,
+  },
+  cors: {
+    // Se ALLOWED_ORIGINS existir, SUBSTITUI esta lista: inclua todas as origens (app, CRM e portal).
+    allowedOrigins: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+      : ['http://localhost:19006', 'http://localhost:5173', 'http://localhost:5174'],
+  },
+  // Chave compartilhada para chamadas servidor-a-servidor vindas do
+  // crm-pet-shop-backend (ex: consultar métricas do Bitzy Club a partir
+  // do CRM). Nunca é exposta a clientes finais — ver middlewares/internalAuth.js.
+  internalApiKey: process.env.INTERNAL_API_KEY || '',
+  // Base do portal das ONGs, usada no link do convite e do "esqueci a senha" (sem barra no final).
+  // O portal roda em dev na porta 5174.
+  ongPortalUrl: (process.env.ONG_PORTAL_URL || 'http://localhost:5174').replace(/\/$/, ''),
+};

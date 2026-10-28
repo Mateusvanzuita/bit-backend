@@ -25,6 +25,13 @@ class InternalController {
     res.status(200).json({ status: 'success', data: metricas });
   });
 
+  // GET /internal/petshops/by-crm/:crmPetshopId/cupons-uso
+  usoCuponsPorCrmPetshopId = asyncHandler(async (req, res) => {
+    const petShop = await buscarPetShopPorCrmId(req.params.crmPetshopId);
+    const cupons = await clubService.usoCuponsDoCrm(petShop.id);
+    res.status(200).json({ status: 'success', data: { cupons } });
+  });
+
   // POST /internal/vinculo-clinica/gerar-codigo
   gerarCodigoVinculo = asyncHandler(async (req, res) => {
     const resultado = await vinculoClinicaService.gerarCodigo(req.body);

@@ -31,6 +31,7 @@ class CupomRepository extends BaseRepository {
       where: {
         petShopId,
         ativo: true,
+        dataInicio: { lte: agora },
         OR: [{ dataFim: null }, { dataFim: { gt: agora } }],
       },
       orderBy: [{ tipo: 'asc' }, { dataFim: 'asc' }],
@@ -40,7 +41,14 @@ class CupomRepository extends BaseRepository {
     const ids = cupons.map((c) => c.id);
     const resgatesUser = await prisma.cupomResgate.findMany({
       where: { cupomId: { in: ids }, userId },
-      select: { cupomId: true, status: true, resgatadoEm: true, dataFimSnapshot: true },
+      select: {
+        cupomId: true,
+        status: true,
+        resgatadoEm: true,
+        dataFimSnapshot: true,
+        totalUsos: true,
+        utilizadoEm: true,
+      },
     });
 
     const resgateMap = Object.fromEntries(resgatesUser.map((r) => [r.cupomId, r]));
@@ -67,6 +75,7 @@ class CupomRepository extends BaseRepository {
       where: {
         petShopId: { in: petShopIds },
         ativo: true,
+        dataInicio: { lte: agora },
         OR: [{ dataFim: null }, { dataFim: { gt: agora } }],
       },
       include: {

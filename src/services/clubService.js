@@ -399,6 +399,7 @@ class ClubService {
         petShopId: { in: petShopIds },
         ativo: true,
         tipo: { not: 'FAVORITO' },
+        dataInicio: { lte: agora },
         OR: [{ dataFim: null }, { dataFim: { gt: agora } }],
       },
       include: {
@@ -441,30 +442,41 @@ class ClubService {
       throw new AppError('Este pet shop não está mais ativo no Bitzy Club', 403);
 
     const agora = new Date();
+    if (cupom.dataInicio && cupom.dataInicio > agora)
+      throw new AppError('Este cupom ainda não está disponível', 403);
     if (cupom.dataFim && cupom.dataFim < agora)
       throw new AppError('Este cupom já expirou', 410);
 
     if (cupom.limiteUsoTotal && cupom.totalResgates >= cupom.limiteUsoTotal)
       throw new AppError('Este cupom atingiu o limite de resgates', 409);
 
+    // A validade do resgate nunca passa da validade do próprio cupom
+    // (antes, cupom SAZONAL ficava sem data e nunca expirava na carteira).
+    let dataFimResgate = calcularDataFim(cupom.duracaoTipo, agora);
+    if (cupom.dataFim && (!dataFimResgate || cupom.dataFim < dataFimResgate)) {
+      dataFimResgate = cupom.dataFim;
+    }
+
     const resgateExistente = await cupomResgateRepository.findByUserAndCupom(userId, cupomId);
     if (resgateExistente) {
       if (resgateExistente.status === 'ATIVO')
         throw new AppError('Você já resgatou este cupom e ele ainda está ativo', 409);
-      if (resgateExistente.status === 'UTILIZADO' && cupom.tipo !== 'FIXO')
+      if (resgateExistente.status === 'UTILIZADO')
         throw new AppError('Você já utilizou este cupom', 409);
-      // Cupom FIXO já utilizado: reativar o resgate existente
-      if (resgateExistente.status === 'UTILIZADO' && cupom.tipo === 'FIXO') {
-        await prisma.cupomResgate.update({
-          where: { id: resgateExistente.id },
-          data: { status: 'ATIVO', expiradoEm: null },
-        });
-        // Não incrementa totalResgates no cupom pai pois não é um novo resgate
-        return await prisma.cupomResgate.findUnique({ where: { id: resgateExistente.id } });
-      }
+      // EXPIRADO com o cupom ainda válido: reativa em vez de tentar criar de novo
+      // (criar de novo violava o @@unique e dava erro 500).
+      return await prisma.cupomResgate.update({
+        where: { id: resgateExistente.id },
+        data: {
+          status: 'ATIVO',
+          expiradoEm: null,
+          avisoEnviado: null,
+          totalUsos: 0,
+          utilizadoEm: null,
+          dataFimSnapshot: dataFimResgate,
+        },
+      });
     }
-
-    const dataFimResgate = calcularDataFim(cupom.duracaoTipo, agora);
 
     let resgate;
     await prisma.$transaction(async (tx) => {
@@ -516,17 +528,34 @@ class ClubService {
         409,
       );
 
-    const novoTotalUsos = (resgate.totalUsos ?? 0) + 1;
-    const isCupomFixo = resgate.cupom.tipo === 'FIXO';
-    const limiteAtingido = !isCupomFixo && novoTotalUsos >= resgate.cupom.limiteUsoPorUser;
+    if (resgate.dataFimSnapshot && resgate.dataFimSnapshot <= new Date()) {
+      await prisma.cupomResgate.update({
+        where: { id: resgateId },
+        data: { status: 'EXPIRADO', expiradoEm: new Date() },
+      });
+      throw new AppError('Este cupom está expirado', 410);
+    }
 
-    return await prisma.cupomResgate.update({
-      where: { id: resgateId },
-      data: {
-        totalUsos: novoTotalUsos,
-        utilizadoEm: new Date(),
-        status: limiteAtingido ? 'UTILIZADO' : 'ATIVO',
-      },
+    // limiteUsoPorUser: 1 = uso único | N = N usos | 0 (ou FAVORITO) = ilimitado
+    const limite = resgate.cupom.limiteUsoPorUser ?? 1;
+    const ilimitado = resgate.cupom.tipo === 'FAVORITO' || limite <= 0;
+
+    return await prisma.$transaction(async (tx) => {
+      // updateMany com status ATIVO evita contar dois toques simultâneos
+      const r = await tx.cupomResgate.updateMany({
+        where: { id: resgateId, status: 'ATIVO' },
+        data: { totalUsos: { increment: 1 }, utilizadoEm: new Date() },
+      });
+      if (r.count === 0) throw new AppError('Este cupom já foi utilizado', 409);
+
+      const atual = await tx.cupomResgate.findUnique({ where: { id: resgateId } });
+      if (!ilimitado && atual.totalUsos >= limite) {
+        return await tx.cupomResgate.update({
+          where: { id: resgateId },
+          data: { status: 'UTILIZADO' },
+        });
+      }
+      return atual;
     });
   }
 
@@ -836,6 +865,12 @@ class ClubService {
       cuponsAtivos,
       resgates: metricas,
     };
+  }
+
+  async usoCuponsDoCrm(petShopId) {
+    const petShop = await petShopRepository.findById(petShopId);
+    if (!petShop) throw new AppError('Pet shop não encontrado', 404);
+    return await cupomResgateRepository.usoPorCupomDoCrm(petShopId);
   }
   
   async listarCuponsPetShop(petShopId) {

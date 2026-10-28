@@ -31,6 +31,8 @@ class CupomResgateRepository extends BaseRepository {
             tipoBeneficio: true,
             tipo: true,
             duracaoTipo: true,
+            codigoDisplay: true,
+            limiteUsoPorUser: true,
           },
         },
       },
@@ -42,7 +44,19 @@ class CupomResgateRepository extends BaseRepository {
       by: ['cupomId'],
       where: { petShopId },
       _count: { id: true },
+      _sum: { totalUsos: true },
       orderBy: { _count: { id: 'desc' } },
+    });
+
+    const statusRaw = await prisma.cupomResgate.groupBy({
+      by: ['status'],
+      where: { petShopId },
+      _count: { id: true },
+    });
+    const porStatus = Object.fromEntries(statusRaw.map((s) => [s.status, s._count.id]));
+    const usos = await prisma.cupomResgate.aggregate({
+      where: { petShopId },
+      _sum: { totalUsos: true },
     });
 
     const inicioMes = new Date();
@@ -60,7 +74,37 @@ class CupomResgateRepository extends BaseRepository {
       where: { petShopId },
     });
 
-    return { porCupom, totalMes, totalGeral };
+    return { porCupom, totalMes, totalGeral, porStatus, totalUsos: usos._sum.totalUsos ?? 0 };
+  }
+
+  // Uso de cada cupom publicado pelo CRM (chave: origemCrmCupomId), para o CRM mostrar "usado X vezes".
+  async usoPorCupomDoCrm(petShopId) {
+    const cupons = await prisma.cupom.findMany({
+      where: { petShopId, origemCrmCupomId: { not: null } },
+      select: { id: true, origemCrmCupomId: true, limiteUsoPorUser: true, dataInicio: true, dataFim: true },
+    });
+    const grupos = await prisma.cupomResgate.groupBy({
+      by: ['cupomId', 'status'],
+      where: { petShopId },
+      _count: { id: true },
+      _sum: { totalUsos: true },
+    });
+
+    return cupons.map((c) => {
+      const meus = grupos.filter((g) => g.cupomId === c.id);
+      const conta = (st) => meus.find((g) => g.status === st)?._count.id ?? 0;
+      return {
+        origemCrmCupomId: c.origemCrmCupomId,
+        limiteUsoPorUser: c.limiteUsoPorUser,
+        dataInicio: c.dataInicio,
+        dataFim: c.dataFim,
+        resgatados: meus.reduce((a, g) => a + g._count.id, 0),
+        ativos: conta('ATIVO'),
+        utilizados: conta('UTILIZADO'),
+        expirados: conta('EXPIRADO'),
+        usosTotais: meus.reduce((a, g) => a + (g._sum.totalUsos ?? 0), 0),
+      };
+    });
   }
 
   async expirarVencidos() {

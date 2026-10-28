@@ -13,6 +13,7 @@ router.use(authenticateInternal);
 
 router.get('/petshops/by-crm/:crmPetshopId/metricas', internalController.metricasPorCrmPetshopId);
 router.post('/petshops/by-crm/:crmPetshopId/cupons', internalController.publicarCupom);
+router.get('/petshops/by-crm/:crmPetshopId/cupons-uso', internalController.usoCuponsPorCrmPetshopId);
 router.post('/vinculo-clinica/gerar-codigo', internalController.gerarCodigoVinculo);
 router.post('/vinculo-clinica/sincronizar-vacina', internalController.sincronizarVacina);
 router.post('/vinculo-clinica/sincronizar-registro', internalController.sincronizarRegistroClinico);
