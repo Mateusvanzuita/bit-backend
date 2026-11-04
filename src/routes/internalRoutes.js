@@ -1,8 +1,12 @@
+// src/routes/internalRoutes.js  (SUBSTITUI o arquivo atual)
+// Mudanças: saem as rotas de gestão de cupons/ofertas feitas pelo admin (agora o pet shop faz no portal)
+// e entram as rotas de ACESSO ao portal. Fica o que o CRM ainda usa: métricas, publicar cupom do CRM,
+// vínculo clínico, criar/editar/ativar parceiro, e PATCH /cupons/:id (o CRM desativa cupom ao apagar).
 const express = require('express');
 const internalController = require('../controllers/internalController');
 const { authenticateInternal } = require('../middlewares/internalAuth');
-const { uploadSingle } = require('../middlewares/uploadMiddleware');
 const internalOngController = require('../controllers/internalOngController');
+const internalPetShopAcessoController = require('../controllers/internalPetShopAcessoController');
 const novidadeInternalRoutes = require('./novidadeInternalRoutes');
 const avaliacaoAppInternalRoutes = require('./avaliacaoAppInternalRoutes');
 const versaoAppInternalRoutes = require('./versaoAppInternalRoutes');
@@ -19,24 +23,22 @@ router.post('/vinculo-clinica/sincronizar-vacina', internalController.sincroniza
 router.post('/vinculo-clinica/sincronizar-registro', internalController.sincronizarRegistroClinico);
 router.post('/vinculo-clinica/sincronizar-anexo', internalController.sincronizarAnexo);
 
-// ── Gestão de parceiros pelo admin do CRM ──────────────────────────────────
+// ── Parceiros: cadastro e controle (admin). Conteúdo (cupons/ofertas/perfil) é do portal do pet shop. ──
 router.post('/petshops/from-crm', internalController.vincularPetShopDoCrm);
 router.post('/petshops/direto', internalController.criarPetShopDireto);
 router.get('/petshops/direto', internalController.listarPetShopsDiretos);
 router.get('/petshops/:id', internalController.buscarPetShop);
 router.patch('/petshops/:id', internalController.atualizarPetShop);
 router.patch('/petshops/:id/status', internalController.alterarStatusPetShop);
-router.get('/petshops/:id/cupons', internalController.listarCuponsDoPetShop);
-router.post('/petshops/:id/cupons/admin', internalController.criarCupomAdmin);
-router.patch('/cupons/:cupomId', internalController.atualizarCupomAdmin);
 
-// ── Ofertas de produtos ─────────────────────────────────────────────────
-router.get('/petshops/:id/ofertas', internalController.listarOfertasDoPetShop);
-router.post('/petshops/:id/ofertas', internalController.criarOferta);
-router.patch('/ofertas/:ofertaId', internalController.atualizarOferta);
-router.delete('/ofertas/:ofertaId', internalController.removerOferta);
-router.get('/ofertas/cliques', internalController.listarCliques);
-router.post('/ofertas/upload-foto', uploadSingle, internalController.uploadFotoOferta);
+// ── Acesso ao portal do pet shop + monitoramento ──
+router.get('/petshops/:id/acesso', internalPetShopAcessoController.detalhar);
+router.post('/petshops/:id/acesso', internalPetShopAcessoController.gerarConvite);
+router.delete('/petshops/:id/acesso/convite', internalPetShopAcessoController.revogarConvite);
+router.patch('/petshops/:id/acesso/status', internalPetShopAcessoController.alterarStatusAcesso);
+
+// Usado pelo CRM (tenant) ao apagar um cupom publicado: desativa no Club em vez de apagar.
+router.patch('/cupons/:cupomId', internalController.atualizarCupomAdmin);
 
 router.get('/ongs', internalOngController.listarOngs);
 router.post('/ongs', internalOngController.criarOng);

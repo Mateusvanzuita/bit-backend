@@ -34,6 +34,8 @@ class UserRepository extends BaseRepository {
         cidade: true,
         estado: true,
         pais: true,
+        objetivo: true,
+        onboardingConcluido: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -58,6 +60,8 @@ class UserRepository extends BaseRepository {
         pais: true,
         consentimentoIA: true,
         consentimentoIAEm: true,
+        objetivo: true,
+        onboardingConcluido: true,
       },
     });
   }

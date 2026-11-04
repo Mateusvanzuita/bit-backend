@@ -7,6 +7,7 @@ const {
   forgotPasswordValidator,
   verifyResetCodeValidator,
   resetPasswordValidator,
+  onboardingValidator,
 } = require('../validators/authValidator');
 const validate = require('../middlewares/validate');
 const authMiddleware = require('../middlewares/auth');
@@ -34,6 +35,7 @@ router.patch(
   authMiddleware,
   authController.updateConsentimentoIA,
 );
+router.patch('/onboarding', authMiddleware, onboardingValidator, validate, authController.updateOnboarding);
 router.patch('/change-password', authMiddleware, authController.changePassword);
 router.patch('/location',      authMiddleware, authController.updateLocation);
 router.patch('/push-token',    authMiddleware, authController.updatePushToken);

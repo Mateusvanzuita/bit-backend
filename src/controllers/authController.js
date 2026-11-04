@@ -38,6 +38,11 @@ class AuthController {
     });
   });
 
+  updateOnboarding = asyncHandler(async (req, res) => {
+    const user = await authService.updateOnboarding(req.user.id, req.body.objetivo);
+    res.status(200).json({ status: 'success', data: { user } });
+  });
+
   changePassword = asyncHandler(async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     await authService.changePassword(req.user.id, currentPassword, newPassword);

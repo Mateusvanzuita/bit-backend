@@ -67,6 +67,9 @@ model User {
   consentimentoIA   Boolean   @default(false)
   consentimentoIAEm DateTime?
 
+  objetivo            ObjetivoUsuario?
+  onboardingConcluido Boolean @default(false)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -85,6 +88,7 @@ model User {
   denunciasAnimais    DenunciaAnimal[]
   ajudasOng           AjudaOng[]
   avaliacoesApp       AvaliacaoApp[]
+  favoritosOngs       FavoritoOng[]
   pushToken           String?
   ultimoFavoritadoEm DateTime?
 
@@ -657,6 +661,7 @@ model PetShop {
   seguidores    PetShopSeguidor[]
   favoritos     PetShopFavorito[]
   ofertas       OfertaProduto[]
+  usuarios PetShopUsuario[]
 
   @@index([cidade, estado])
   @@index([latitude, longitude])
@@ -1145,6 +1150,7 @@ model Ong {
   interesses    InteresseAdocao[]
   ajudas        AjudaOng[]
   usuarios OngUsuario[]
+  favoritos     FavoritoOng[]
 
   @@index([cidade, estado])
   @@index([ativa, verificada])
@@ -1264,6 +1270,23 @@ model FavoritoAnimal {
   @@unique([userId, animalId])
   @@index([userId])
   @@map("favoritos_animais")
+}
+
+model FavoritoOng {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ongId     String
+  ong       Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, ongId])
+  @@index([userId])
+  @@index([ongId])
+  @@map("favoritos_ongs")
 }
 
 // "Avise-me quando chegar um assim"
@@ -1524,3 +1547,87 @@ model ConfigVersaoApp {
 
   @@map("config_versao_app")
 }
+
+// ============================================================
+//  PORTAL DO PET SHOP: cole no final do schema.prisma
+//  + em `model PetShop`, adicione a linha:   usuarios PetShopUsuario[]
+//  Depois:  npx prisma migrate dev --name petshop_portal
+// ============================================================
+
+enum StatusPetShopUsuario {
+  CONVIDADO   // convite enviado, senha ainda não definida
+  ATIVO
+  BLOQUEADO
+}
+
+model PetShopUsuario {
+  id        String  @id @default(uuid())
+
+  petShopId String
+  petShop   PetShop @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  nome      String
+  email     String  @unique
+  senhaHash String?                       // null até o primeiro acesso
+
+  status    StatusPetShopUsuario @default(CONVIDADO)
+
+  // O token do convite NUNCA é guardado puro: só o hash (sha256).
+  conviteTokenHash String?   @unique
+  conviteExpiraEm  DateTime?
+  conviteEnviadoEm DateTime?
+
+  ultimoLoginEm DateTime?
+  criadoPor     String?
+
+  refreshTokens PetShopRefreshToken[]
+  resetTokens   PetShopResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([petShopId])
+  @@map("petshop_usuarios")
+}
+
+// Refresh token com ROTAÇÃO (mesma família = mesma sessão). Só o hash é guardado.
+model PetShopRefreshToken {
+  id         String         @id @default(uuid())
+  usuarioId  String
+  usuario    PetShopUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  familiaId  String
+  tokenHash  String         @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+  revogadoEm DateTime?
+
+  createdAt  DateTime       @default(now())
+
+  @@index([usuarioId])
+  @@index([familiaId])
+  @@index([expiraEm])
+  @@map("petshop_refresh_tokens")
+}
+
+model PetShopResetToken {
+  id         String         @id @default(uuid())
+  usuarioId  String
+  usuario    PetShopUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tokenHash  String         @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+
+  createdAt  DateTime       @default(now())
+
+  @@index([usuarioId])
+  @@map("petshop_reset_tokens")
+}
+
+enum ObjetivoUsuario {
+  TENHO_PET
+  QUERO_ADOTAR
+  EXPLORAR
+}
+

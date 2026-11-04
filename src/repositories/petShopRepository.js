@@ -158,6 +158,7 @@ class PetShopRepository extends BaseRepository {
       pesoDestaque: true,
       createdAt: true,
       updatedAt: true,
+      usuarios: { select: { status: true, ultimoLoginEm: true, conviteExpiraEm: true }, orderBy: { createdAt: 'asc' }, take: 1 },
       _count: {
         select: {
           seguidores: true,
@@ -201,6 +202,7 @@ async listarDiretos() {
       descontoFavoritoAtivo: true,
       descontoFavorito: true,
       createdAt: true,
+      usuarios: { select: { status: true, ultimoLoginEm: true, conviteExpiraEm: true }, orderBy: { createdAt: 'asc' }, take: 1 },
       _count: {
         select: {
           seguidores: true,

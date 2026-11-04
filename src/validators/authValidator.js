@@ -44,10 +44,17 @@ const resetPasswordValidator = [
     .isLength({ min: 6 }).withMessage('A nova senha deve ter no mínimo 6 caracteres.'),
 ];
 
+const onboardingValidator = [
+  body('objetivo')
+    .isIn(['TENHO_PET', 'QUERO_ADOTAR', 'EXPLORAR'])
+    .withMessage('Objetivo inválido.'),
+];
+
 module.exports = {
   registerValidator,
   loginValidator,
   forgotPasswordValidator,
   verifyResetCodeValidator,
   resetPasswordValidator,
+  onboardingValidator,
 };

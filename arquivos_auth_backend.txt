@@ -1,0 +1,2302 @@
+============================================================
+ARQUIVO: prisma/schema.prisma
+============================================================
+
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String    @id @default(uuid())
+
+  nome      String
+  email     String    @unique
+  senha     String
+
+  role      RoleAdmin @default(EDITOR)
+
+  ativo     Boolean   @default(true)
+
+  // Controle de acesso ao prompt do SOS
+  sosPrompt SosPrompt[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("admins")
+}
+
+model SosPrompt {
+  id        String   @id @default(uuid())
+
+  conteudo  String   @db.Text
+  ativo     Boolean  @default(false)  // apenas 1 ativo por vez
+
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([ativo])
+  @@map("sos_prompts")
+}
+
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  nome            String
+  senha           String
+  avatar          String?
+
+  dataNascimento  DateTime?
+  sexo            Sexo?
+
+  notificacoesAtivas Boolean @default(true)
+
+  // Preferências de push por categoria (o toggle geral é notificacoesAtivas)
+  pushPet        Boolean @default(true)
+  pushAdocao     Boolean @default(true)
+  pushClube      Boolean @default(true)
+  pushNovidades  Boolean @default(true)
+
+  consentimentoIA   Boolean   @default(false)
+  consentimentoIAEm DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  pets            Pet[]
+  notificacoes Notificacao[]
+  salvos Salvo[]
+  aceiteTermos UserAceiteTermos[]
+  sosAtendimentos SosAtendimento[]
+  petShopsSeguidores  PetShopSeguidor[]
+  petShopFavorito     PetShopFavorito?
+  cupomResgates       CupomResgate[]
+  ofertaCliques       OfertaClique[]
+  interessesAdocao    InteresseAdocao[]
+  favoritosAnimais    FavoritoAnimal[]
+  alertasAdocao       AlertaAdocao[]
+  denunciasAnimais    DenunciaAnimal[]
+  ajudasOng           AjudaOng[]
+  avaliacoesApp       AvaliacaoApp[]
+  pushToken           String?
+  ultimoFavoritadoEm DateTime?
+
+  // Código pessoal de indicação (ex.: BITZY-K7M2Q). Gerado sob demanda.
+  // Base da fase 2: campo "tem código?" no cadastro, tabela Indicacao e recompensa no Clube.
+  codigoIndicacao    String? @unique
+  
+  latitude   Float?
+  longitude  Float?
+  cidade     String?
+  estado     String?
+  pais       String?   @default("BR")
+
+  @@map("users")
+}
+
+
+model Notificacao {
+  id          String   @id @default(uuid())
+
+  titulo      String
+  mensagem    String
+
+  tipo        TipoNotificacao
+  pathKey     String?
+
+  lida        Boolean  @default(false)
+
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  lidaEm      DateTime?
+
+  @@index([userId, lida])
+  @@map("notificacoes")
+}
+
+
+model Salvo {
+  id          String   @id @default(uuid())
+
+  titulo      String
+  descricao   String?
+
+  tipo        TipoSalvo
+  referenciaId String
+  pathKey     String
+
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([tipo, referenciaId])
+  @@map("salvos")
+}
+
+
+model Pet {
+  id        String   @id @default(uuid())
+  nome      String
+  foto      String?
+  raca      String?
+  
+  dataNascimento DateTime?
+  idade           Int?
+  meses           Int?
+
+  peso     Float?
+  especie  Especie
+  cor      String?
+  sexo     SexoPet
+  porte    Porte
+
+  microchip  String?
+  castrado   Boolean @default(false)
+
+  veterinarioResponsavel String?
+
+  alergiasRestricoes String[]
+  doencasCronicas    String[]
+
+  comportamento Comportamento
+
+  convivencia Convivencia[]
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+// Relacionamentos para Dicas
+  historicosDicas       PetDicaHistorico[] // Oposto de PetDicaHistorico.pet
+  respostasDicas        PetDicaResposta[]
+  analises AnaliseHistorico[]
+  sosAtendimentos SosAtendimento[]
+  vacinas Vacina[]
+  registrosClinicos RegistroClinicoApp[]
+  vinculosClinica VinculoClinicaPet[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pets")
+}
+
+model Vacina {
+  id           String   @id @default(uuid())
+  nome         String
+  categoria    String   // "vaccine" ou "dewormer"
+  recorrente   Boolean  @default(true)
+  
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  
+  doses        DoseVacina[]
+  observacoes   String?   @db.Text
+
+  // Preenchidos quando esta vacina veio de um registro feito pela clínica
+  // no CRM (crm-pet-shop-backend), via pet vinculado — ver VinculoClinicaPet.
+  // origemCrmRegistroId garante idempotência: reenviar o mesmo registro
+  // atualiza em vez de duplicar.
+  origemClinica       Boolean @default(false)
+  origemCrmRegistroId String? @unique
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("vacinas")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  VÍNCULO PET ↔ CLÍNICA (CRM)
+//  Criado quando o tutor confirma, via código, que um Pet do app
+//  corresponde a um Pet cadastrado numa clínica/petshop no CRM.
+// ─────────────────────────────────────────────────────────────
+model VinculoClinicaPet {
+  id           String   @id @default(uuid())
+
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  // Referências soltas ao CRM (banco diferente, sem FK real)
+  crmPetId     String
+  crmPetshopId String
+  crmPetshopNome String
+
+  vinculadoEm  DateTime @default(now())
+
+  @@unique([petId, crmPetId])
+  @@index([petId])
+  @@map("vinculos_clinica_pet")
+}
+
+// Código curto e temporário gerado pelo CRM para o tutor confirmar o
+// vínculo do pet no app. Expira sozinho (expiraEm) e é descartado após
+// uso (usadoEm) — evita reuso indevido do mesmo código.
+model CodigoVinculoClinica {
+  id           String   @id @default(uuid())
+  codigo       String   @unique // 6 dígitos, gerado pelo CRM
+
+  crmPetId       String
+  crmPetshopId   String
+  crmPetshopNome String
+  crmPetNome     String
+
+  criadoEm     DateTime @default(now())
+  expiraEm     DateTime
+  usadoEm      DateTime?
+  usadoPorUserId String?
+
+  @@map("codigos_vinculo_clinica")
+}
+
+model DoseVacina {
+  id           String   @id @default(uuid())
+  dataAplicada DateTime
+  proximaDose  DateTime?
+  tipo         String   // Ex: "Reforço anual", "1ª Dose"
+  observacoes   String?   @db.Text
+  vacinaId     String
+  vacina       Vacina   @relation(fields: [vacinaId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@map("doses_vacinas")
+}
+
+model RegistroClinicoApp {
+  id           String   @id @default(uuid())
+
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  tipo         String   // CONSULTA, PROCEDIMENTO, EXAME, OBSERVACAO
+  data         DateTime
+  descricao    String   @db.Text
+  vetNome      String?
+  clinicaNome  String
+
+  origemClinica       Boolean @default(true)
+  origemCrmRegistroId String  @unique
+
+  anexos       AnexoRegistroClinicoApp[]
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([petId])
+  @@map("registros_clinicos_app")
+}
+
+model AnexoRegistroClinicoApp {
+  id                    String   @id @default(uuid())
+
+  registroClinicoAppId  String
+  registroClinicoApp    RegistroClinicoApp @relation(fields: [registroClinicoAppId], references: [id], onDelete: Cascade)
+
+  nomeArquivo  String
+  url          String
+  tipoArquivo  String
+
+  origemCrmAnexoId String @unique
+
+  criadoEm     DateTime @default(now())
+
+  @@index([registroClinicoAppId])
+  @@map("anexos_registro_clinico_app")
+}
+
+model Dica {
+  id          String @id @default(uuid())
+  titulo      String
+  descricao   String
+  icone       String?
+  prompt    String?  @db.Text
+
+  createdAt  DateTime @default(now())
+historicos  PetDicaHistorico[] // Oposto de PetDicaHistorico.dica
+  etapas     DicaEtapa[]
+  respostas  PetDicaResposta[]
+
+  @@map("dicas")
+}
+
+
+model DicaEtapa {
+  id       String @id @default(uuid())
+  titulo   String
+  ordem    Int
+
+  dicaId  String
+  dica    Dica @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+
+  opcoes  DicaOpcao[]
+  respostas PetDicaResposta[]
+
+  @@map("dica_etapas")
+}
+
+
+model DicaOpcao {
+  id        String @id @default(uuid())
+  texto     String
+  valor     String
+  ordem     Int
+
+  etapaId  String
+  etapa    DicaEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  respostas PetDicaResposta[]
+
+  @@map("dica_opcoes")
+}
+
+
+model PetDicaHistorico {
+  id          String   @id @default(uuid())
+  
+  petId       String
+  pet         Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  dicaId      String
+  dica        Dica     @relation(fields: [dicaId], references: [id], onDelete: Cascade)
+
+  resultadoIA String?  @db.Text
+  concluida   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  respostas   PetDicaResposta[]
+
+  @@map("pet_dica_historicos")
+}
+
+// Ajustar o PetDicaResposta para apontar para o Historico em vez de diretamente para o Pet/Dica (opcional, mas recomendado para manter histórico)
+model PetDicaResposta {
+  id          String   @id @default(uuid())
+  
+  historicoId String
+  historico   PetDicaHistorico @relation(fields: [historicoId], references: [id], onDelete: Cascade)
+
+  petId       String
+  pet         Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  dicaId      String
+  dica        Dica     @relation(fields: [dicaId], references: [id])
+
+  etapaId     String
+  etapa       DicaEtapa @relation(fields: [etapaId], references: [id])
+
+  // Alterado para opcional (?) para permitir perguntas de texto puro
+  opcaoId     String?
+  opcao       DicaOpcao? @relation(fields: [opcaoId], references: [id])
+
+  // CAMPO FALTANTE ADICIONADO ABAIXO:
+  valor       String?   @db.Text
+
+  createdAt   DateTime @default(now())
+
+  @@map("pet_dica_respostas")
+}
+
+
+model Analise {
+  id          String @id @default(uuid())
+  titulo      String
+  descricao   String
+  icone       String?
+  prompt      String?  @db.Text
+
+  createdAt DateTime @default(now())
+
+  etapas     AnaliseEtapa[]
+
+  historicos AnaliseHistorico[]
+
+  @@map("analises")
+}
+
+
+model AnaliseEtapa {
+  id       String @id @default(uuid())
+  titulo   String
+  ordem    Int
+
+  permiteTexto Boolean @default(false)
+  permiteFoto  Boolean @default(false)
+
+  analiseId String
+  analise   Analise @relation(fields: [analiseId], references: [id], onDelete: Cascade)
+
+  opcoes    AnaliseOpcao[]
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_etapas")
+}
+
+
+model AnaliseOpcao {
+  id       String @id @default(uuid())
+  texto    String
+  valor    String
+  ordem    Int
+
+  etapaId String
+  etapa   AnaliseEtapa @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_opcoes")
+}
+
+
+model AnaliseHistorico {
+  id        String @id @default(uuid())
+
+  petId    String
+  pet      Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  analiseId String
+  analise   Analise @relation(fields: [analiseId], references: [id])
+  resultadoIA String?  @db.Text
+  concluida Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  respostas AnaliseResposta[]
+
+  @@map("analise_historicos")
+}
+
+
+model AnaliseResposta {
+  id String @id @default(uuid())
+
+  historicoId String?
+  historico   AnaliseHistorico? @relation(fields: [historicoId], references: [id], onDelete: Cascade)
+
+  etapaId String
+  etapa   AnaliseEtapa @relation(fields: [etapaId], references: [id])
+
+  opcaoId String?
+  opcao   AnaliseOpcao? @relation(fields: [opcaoId], references: [id])
+
+  texto   String?
+  fotoUrl String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([historicoId, etapaId])
+  @@map("analise_respostas")
+}
+
+
+enum TipoNotificacao {
+  DICA
+  ANALISE
+  LEMBRETE
+  SAUDE
+  SISTEMA
+}
+
+
+model BannerHome {
+  id          String   @id @default(uuid())
+
+  titulo      String?
+  descricao   String?
+
+  imagemUrl   String
+  pathKey     String?
+
+  ativo       Boolean  @default(true)
+  ordem       Int      @default(0)
+
+  dataInicio  DateTime?
+  dataFim     DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ativo])
+  @@map("banners_home")
+}
+
+model SosAtendimento {
+  id           String   @id @default(uuid())
+  mensagemUser String   @db.Text
+  respostaIA   String   @db.Text
+  
+  petId        String
+  pet          Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  historico String? @db.Text 
+
+  status    String  @default("ativo") 
+  createdAt    DateTime @default(now())
+
+  @@map("sos_atendimentos")
+}
+
+model PoliticaPrivacidade {
+  id             String   @id @default(uuid())
+  versao         String?  @unique // Opcional
+  conteudo       String?  @db.Text // Opcional
+  publicadoEm    DateTime @default(now())
+  
+  aceites        UserAceiteTermos[]
+
+  @@map("politicas_privacidade")
+}
+
+model TermoUso {
+  id             String   @id @default(uuid())
+  versao         String?  @unique // Opcional
+  conteudo       String?  @db.Text // Opcional
+  publicadoEm    DateTime @default(now())
+
+  aceites        UserAceiteTermos[]
+
+  @@map("termos_uso")
+}
+
+model UserAceiteTermos {
+  id                    String   @id @default(uuid())
+  
+  userId                String?
+  user                  User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  politicaPrivacidadeId String?
+  politicaPrivacidade   PoliticaPrivacidade? @relation(fields: [politicaPrivacidadeId], references: [id])
+
+  termoUsoId            String?
+  termoUso              TermoUso?            @relation(fields: [termoUsoId], references: [id])
+
+  aceitoEm              DateTime @default(now())
+  ip                    String?
+
+  @@map("user_aceite_termos")
+}
+
+model PasswordResetCode {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime 
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("password_reset_codes")
+}
+
+// ============================================================
+//  BITZY CLUB — Adições ao schema.prisma existente
+//  Cole estes models após os models existentes no seu schema.
+//  Adicione também os novos enums ao bloco de enums existente.
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────────
+//  PETSHOP PARCEIRO
+//  Estabelecimentos cadastrados no Bitzy Club (R$99/mês)
+// ─────────────────────────────────────────────────────────────
+model PetShop {
+  id            String   @id @default(uuid())
+
+  nome          String
+  descricao     String?  @db.Text
+  logoUrl       String?
+  bannerUrl     String?
+
+  endereco      String
+  cidade        String
+  estado        String
+  pais          String   @default("BR")
+  latitude      Float
+  longitude     Float
+
+  telefone      String?
+  whatsapp      String?
+  instagram     String?
+  website       String?
+
+  crmPetshopId  String?  @unique
+
+  origem        PetShopOrigem @default(DIRETO)
+  aprovado      Boolean  @default(false)
+
+  ativo         Boolean  @default(true)
+  planoAtivo    Boolean  @default(false)
+  planoInicioEm DateTime?
+  planoFimEm    DateTime?
+
+  pesoDestaque Int @default(1)
+
+  descontoFavoritoAtivo Boolean @default(false)
+  descontoFavorito      Float   @default(10.0)
+
+  limiteCuponsAtivos Int @default(10)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cupons        Cupom[]
+  seguidores    PetShopSeguidor[]
+  favoritos     PetShopFavorito[]
+  ofertas       OfertaProduto[]
+  usuarios PetShopUsuario[]
+
+  @@index([cidade, estado])
+  @@index([latitude, longitude])
+  @@index([ativo, planoAtivo])
+  @@map("pet_shops")
+}
+
+enum PetShopOrigem {
+  CRM     // veio de um Petshop já cliente do CRM
+  DIRETO  // cadastrado direto pelo admin, sem vínculo ao CRM
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SEGUIDOR DE PET SHOP
+//  Usuário "segue" N pet shops para receber promoções
+// ─────────────────────────────────────────────────────────────
+model PetShopSeguidor {
+  id         String   @id @default(uuid())
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  petShopId  String
+  petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, petShopId])
+  @@index([userId])
+  @@map("pet_shop_seguidores")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  FAVORITO DE PET SHOP  (limite: 1 por usuário)
+//  Quem favorita recebe o descontoFavorito permanente
+// ─────────────────────────────────────────────────────────────
+model PetShopFavorito {
+  id         String   @id @default(uuid())
+
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  petShopId  String
+  petShop    PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  descontoSnapshot Float?
+
+  favoritadoEm DateTime @default(now())
+
+  @@index([petShopId])
+  @@map("pet_shop_favoritos")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  CUPOM
+//  Criado pelo pet shop; pode ser fixo, sazonal ou favorito
+// ─────────────────────────────────────────────────────────────
+model Cupom {
+  id            String   @id @default(uuid())
+
+  petShopId     String
+  petShop       PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  // ── Identidade ────────────────────────────────────────────
+  // Nome da promoção (ex: "Banho Premiado", "Semana da Ração")
+  titulo        String
+  descricao     String?  @db.Text
+  codigoDisplay String?              // ex: "BITZY10" — mostrado na tela
+  bannerUrl     String?              // foto/arte do cupom (opcional)
+
+  // ── Categorização ─────────────────────────────────────────
+  // Categoria principal (usada para ícone e filtro no app)
+  categoria     CategoriaCupom   @default(OUTROS)
+
+  // Subcategoria livre (ex: "Banho + Tosa", "Ração Premium", "Bravecto")
+  // Preenchida pelo admin no cadastro; exibida como detalhe no card
+  subcategoria  String?
+
+  // ── Tipo do benefício ─────────────────────────────────────
+  tipoBeneficio TipoBeneficio    @default(DESCONTO_PERCENTUAL)
+
+  // Valor numérico — usado quando tipoBeneficio é DESCONTO_PERCENTUAL ou DESCONTO_FIXO
+  // Para BRINDE e COMBO, deixar null e descrever no campo `descricao`
+  valorDesconto Float?
+
+  // ── Tipo interno (para lógica de negócio) ─────────────────
+  // FIXO = permanente/recorrente | SAZONAL = campanha com datas | FAVORITO = gerado ao favoritar
+  tipo          TipoCupom        @default(FIXO)
+
+  // ── Objetivo estratégico (para métricas e relatórios) ─────
+  objetivo      ObjetivoCupom    @default(FIDELIZACAO)
+
+  // ── Ícone visual no card ──────────────────────────────────
+  iconeTipo     TipoCupomIcone   @default(DESCONTO)
+
+  // ── Duração ───────────────────────────────────────────────
+  duracaoTipo   DuracaoCupom     @default(PERMANENTE)
+
+  dataInicio    DateTime         @default(now())
+  dataFim       DateTime?        // null = sem expiração (PERMANENTE)
+
+  // Happy Hour: horário específico (ex: "14:00" e "17:00")
+  // Armazenado como string HH:MM para simplicidade
+  happyHourInicio String?        // ex: "14:00"
+  happyHourFim    String?        // ex: "17:00"
+
+  // ── Limites de uso ────────────────────────────────────────
+  limiteUsoTotal   Int?          // null = sem limite global
+  limiteUsoPorUser Int  @default(1)
+
+  // ── Estado e métricas ─────────────────────────────────────
+  ativo          Boolean  @default(true)
+  destaque       Boolean  @default(false)   // "botão destacar cupom"
+  totalResgates  Int      @default(0)
+
+  // Preenchido quando este cupom foi publicado a partir de um cupom já
+  // existente no CRM (crm-pet-shop-backend) — permite atualizar o mesmo
+  // registro em vez de duplicar ao publicar de novo. Null = cupom nativo
+  // do Club, criado direto pelo dono no app/painel.
+  origemCrmCupomId String? @unique
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  resgates       CupomResgate[]
+
+  @@index([petShopId, ativo])
+  @@index([tipo])
+  @@index([categoria])
+  @@index([dataFim])
+  @@index([destaque, ativo])
+  @@map("cupons")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  OFERTA DE PRODUTO
+//  Produto em destaque/promoção cadastrado pelo petshop (hoje,
+//  só via admin interno) e exibido na home do app.
+// ─────────────────────────────────────────────────────────────
+enum CategoriaOferta {
+  RACAO
+  ACESSORIOS
+  BANHO_TOSA
+  SAUDE
+  OUTROS
+}
+
+model OfertaProduto {
+  id            String   @id @default(uuid())
+
+  petShopId     String
+  petShop       PetShop  @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  nome          String
+  fotoUrl       String
+  categoria     CategoriaOferta @default(OUTROS)
+
+  preco         Float
+  precoOriginal Float?
+
+  ativo         Boolean  @default(true)
+  destaque      Int      @default(0)
+
+  pesoDestaque Int @default(1)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cliques       OfertaClique[]
+
+  @@index([petShopId, ativo])
+  @@index([ativo, destaque])
+  @@map("ofertas_produtos")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CLIQUE EM OFERTA
+//  Registro de interação: usuário clicou no produto/WhatsApp.
+//  Guarda snapshots (petShopId, cidade/estado) porque o histórico
+//  precisa sobreviver mesmo se a oferta for apagada depois.
+// ─────────────────────────────────────────────────────────────
+model OfertaClique {
+  id              String        @id @default(uuid())
+
+  ofertaId        String
+  oferta          OfertaProduto @relation(fields: [ofertaId], references: [id], onDelete: Cascade)
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Snapshots — não usam FK viva de propósito, pra sobreviver mesmo se a
+  // oferta ou o petshop forem removidos depois.
+  petShopId       String
+  petShopNome     String
+  ofertaNome      String
+
+  cidadeSnapshot  String?
+  estadoSnapshot  String?
+
+  criadoEm        DateTime @default(now())
+
+  @@index([ofertaId])
+  @@index([petShopId, criadoEm])
+  @@index([userId])
+  @@map("ofertas_cliques")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+//  CUPOM RESGATE
+//  Registro de cada vez que um usuário resgata/usa um cupom
+//  "alienado ao petshop e ao usuário"
+// ─────────────────────────────────────────────────────────────
+model CupomResgate {
+  id         String        @id @default(uuid())
+
+  cupomId    String
+  cupom      Cupom         @relation(fields: [cupomId], references: [id], onDelete: Cascade)
+
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status     StatusResgate @default(ATIVO)
+
+  // Snapshots no momento do resgate (protege histórico)
+  petShopId           String
+  petShopNome         String
+  cupomTitulo         String
+  cupomCategoria      CategoriaCupom?
+  descontoSnapshot    Float?
+  tipoBeneficioSnapshot TipoBeneficio?
+  dataFimSnapshot     DateTime?
+
+  avisoEnviado  String?  @map("aviso_enviado") // null | '48h' | '24h' | '4h'
+  totalUsos Int @default(0)
+
+  resgatadoEm   DateTime @default(now())
+  utilizadoEm   DateTime?
+  expiradoEm    DateTime?
+
+  @@unique([cupomId, userId])
+  @@index([userId, status])
+  @@index([petShopId])
+  @@index([status, dataFimSnapshot])
+  @@map("cupom_resgates")
+}
+
+enum RoleAdmin {
+  SUPER_ADMIN   // acesso total
+  EDITOR        // pode editar conteúdo mas não criar admins
+}
+
+// ── Categoria principal do cupom ──────────────────────────────
+// Usada para ícone no card e filtro no explorar
+enum CategoriaCupom {
+  SERVICOS        // Banho, Tosa, Consulta, Hotelzinho...
+  ALIMENTACAO     // Ração, Sachê, Petiscos, Ossinhos...
+  SAUDE           // Vermífugo, Antipulgas, Vitaminas...
+  ACESSORIOS      // Coleiras, Caminhas, Brinquedos...
+  GATO            // Areia, Ração felina, Arranhador...
+  OUTROS
+}
+
+// ── Tipo do benefício (o QUE o cliente ganha) ─────────────────
+enum TipoBeneficio {
+  DESCONTO_PERCENTUAL   // 10% OFF, 15% OFF...
+  DESCONTO_FIXO         // R$10 OFF, R$20 OFF...
+  BRINDE                // Banho ganha hidratação, ração ganha petisco...
+  COMBO                 // Banho + Tosa com desconto, 2 banhos por preço especial...
+}
+
+// ── Duração do cupom (EXPANDIDA) ──────────────────────────────
+enum DuracaoCupom {
+  PERMANENTE    // Sempre ativo — ex: "10% em banho às terças"
+  MENSAL        // Dura o mês inteiro — ex: "Promoção de julho"
+  SEMANAL       // Dura a semana — ex: "Semana do Gato"
+  FLASH         // Poucas horas (usa dataFim) — ex: "Somente hoje"
+  HAPPY_HOUR    // Horário específico (usa happyHourInicio/Fim) — ex: "Das 14h às 17h"
+  SAZONAL       // Datas especiais com início/fim — ex: "Black Friday", "Natal"
+}
+
+// ── Tipo interno (lógica de negócio) ─────────────────────────
+enum TipoCupom {
+  FIXO       // Cupons recorrentes/permanentes do pet shop
+  SAZONAL    // Campanhas com datas (Black Friday, Natal...)
+  FAVORITO   // Gerado automaticamente ao favoritar o pet shop
+}
+
+// ── Objetivo estratégico (para relatórios) ───────────────────
+enum ObjetivoCupom {
+  FIDELIZACAO          // Manter cliente voltando
+  RECUPERACAO          // Trazer cliente que sumiu
+  AUMENTO_TICKET       // Comprando acima de R$X ganha Y
+  GIRO_ESTOQUE         // Queima de acessórios, produtos parados
+  SAZONAL              // Produto/serviço de temporada
+  LANCAMENTO           // Novo serviço ou produto
+  AQUISICAO            // Primeiro banho com desconto, cliente novo
+}
+
+enum TipoDesconto {
+  PERCENTUAL   // ex: 10% OFF
+  FIXO_REAIS   // ex: R$15 OFF
+}
+
+// ── Ícone visual no card ──────────────────────────────────────
+// Mapeado no frontend para o ícone correto do lucide-react-native
+enum TipoCupomIcone {
+  DESCONTO      // Tag — desconto genérico
+  BANHO_TOSA    // Scissors — serviços de estética
+  PRODUTO       // ShoppingBag — produto físico
+  VIP           // Award — cupom favorito / cliente especial
+  SAZONAL       // Star — campanha sazonal
+  SAUDE         // Heart — saúde e medicamentos
+  ALIMENTACAO   // UtensilsCrossed — ração e comida
+  BRINDE        // Gift — brinde
+  COMBO         // Package — combo de serviços
+}
+
+// ── Status do resgate ─────────────────────────────────────────
+enum StatusResgate {
+  ATIVO       // Resgatado, ainda válido
+  UTILIZADO   // Apresentado ao atendente
+  EXPIRADO    // Passou da dataFim sem uso
+}
+
+enum Especie {
+  GATO
+  CACHORRO
+}
+
+enum SexoPet {
+  MACHO
+  FEMEA
+}
+
+enum Sexo {
+  MASCULINO
+  FEMENINO
+  MACHO
+  FEMEA
+}
+
+enum Porte {
+  PEQUENO
+  MEDIO
+  GRANDE
+}
+
+enum Comportamento {
+  CALMO
+  AGITADO
+  SOCIAVEL
+  TIMIDO
+  AGRESSIVO
+  BRINCALHAO
+}
+
+enum Convivencia {
+  CRIANCAS
+  OUTROS_CAES
+  GATOS
+  ESTRANHOS
+  IDOSOS
+}
+
+enum TipoSalvo {
+  ANALISE
+  DICA
+}
+
+// ============================================================
+//  ADOÇÃO / ONGs — cole ESTE bloco no final do schema.prisma
+//  (e as relações do User, descritas no PATCHES-BACKEND.md)
+//
+//  Reaproveita os enums que já existem: Especie, SexoPet, Porte,
+//  Comportamento e Convivencia (mesmo vocabulário do Pet — a
+//  conversão "animal adotado → pet" fica quase 1:1).
+// ============================================================
+
+enum TipoOng {
+  ONG
+  PROTETOR
+}
+
+enum TipoChavePix {
+  CPF_CNPJ
+  EMAIL
+  TELEFONE
+  ALEATORIA
+}
+
+enum FaseVida {
+  FILHOTE
+  ADULTO
+  IDOSO
+}
+
+enum StatusAnimalAdocao {
+  DISPONIVEL
+  EM_PROCESSO
+  ADOTADO
+  INDISPONIVEL
+}
+
+// ENCERRADO não é gravado: o app recebe ENCERRADO quando o animal foi adotado/
+// ficou indisponível ou quando a ONG recusou (RECUSADO).
+enum StatusInteresse {
+  ENVIADO
+  EM_CONTATO
+  CANCELADO
+  RECUSADO
+  ADOCAO_CONFIRMADA
+}
+
+enum TipoAjuda {
+  APADRINHAR
+  ITENS
+  VOLUNTARIADO
+  DOACAO_FINANCEIRA
+}
+
+enum StatusAjuda {
+  ENVIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  CANCELADA
+}
+
+enum MotivoDenuncia {
+  JA_ADOTADO
+  INFO_FALSA
+  COBRANCA_INDEVIDA
+  MAUS_TRATOS
+  OUTRO
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ONG / PROTETOR  (cadastrada pelo admin; sem painel próprio por enquanto)
+// ─────────────────────────────────────────────────────────────
+model Ong {
+  id            String   @id @default(uuid())
+
+  nome          String
+  tipo          TipoOng  @default(ONG)
+  descricao     String   @db.Text
+  logoUrl       String?
+  bannerUrl     String?
+
+  // Localização APROXIMADA. Para protetores/lar temporário: só bairro/cidade,
+  // nunca endereço exato (a API pública nem devolve latitude/longitude).
+  cidade        String
+  estado        String
+  bairro        String?
+  latitude      Float?
+  longitude     Float?
+
+  whatsapp      String?
+  instagramUrl  String?
+  siteUrl       String?
+
+  // Só ONGs verificadas exibem PIX e o selo no app.
+  verificada    Boolean  @default(false)
+  ativa         Boolean  @default(true)
+
+  // Processo de adoção
+  cidadesAtendidas String[]            // vazio = adota para qualquer cidade
+  processoAdocao   String[]            // etapas em ordem
+  taxaAdocao       String?
+
+  // ── Como ajudar ───────────────────────────────────────────
+  pixChave         String?
+  pixTipoChave     TipoChavePix?
+  pixTitular       String?
+  entregaDoacoes   String?             // onde/quando entregar itens
+  // [{ id, titulo, quantidade?, prioridade: "URGENTE"|"NORMAL" }]
+  necessidades     Json     @default("[]")
+  // [{ id, titulo, frequencia? }]
+  voluntariado     Json     @default("[]")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  animais       AnimalAdocao[]
+  interesses    InteresseAdocao[]
+  ajudas        AjudaOng[]
+  usuarios OngUsuario[]
+
+  @@index([cidade, estado])
+  @@index([ativa, verificada])
+  @@map("ongs")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ANIMAL PARA ADOÇÃO
+// ─────────────────────────────────────────────────────────────
+model AnimalAdocao {
+  id            String   @id @default(uuid())
+
+  ongId         String
+  ong           Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  nome          String
+  especie       Especie
+  sexo          SexoPet
+  porte         Porte
+  faseVida      FaseVida?
+  idadeMeses    Int?               // aproximada; null = desconhecida
+  raca          String?            // null = SRD
+  cor           String?
+  pesoKg        Float?
+
+  fotos         String[]
+  historia      String   @db.Text
+
+  temperamento                Comportamento[]
+  convivencia                 Convivencia[]   // convive bem com...
+  convivenciaNaoRecomendada   Convivencia[]
+
+  // null = não informado
+  castrado      Boolean?
+  vacinado      Boolean?
+  vermifugado   Boolean?
+  necessidadesEspeciais String? @db.Text
+  larTemporario Boolean  @default(false)
+
+  // [{ nome, categoria: "vaccine"|"dewormer"|"other", dataAplicacao, proximaDose?, observacoes? }]
+  vacinas       Json     @default("[]")
+
+  // Apadrinhamento (ajuda mensal combinada com a ONG, sem pagamento no app)
+  apadrinhamentoAtivo          Boolean @default(false)
+  apadrinhamentoValorSugerido  Float?
+  apadrinhamentoCobre          String?
+
+  status        StatusAnimalAdocao @default(DISPONIVEL)
+  publicado     Boolean  @default(true)    // false = rascunho (não aparece no app)
+  publicadoEm   DateTime?
+  adotadoEm     DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  interesses    InteresseAdocao[]
+  favoritos     FavoritoAnimal[]
+  denuncias     DenunciaAnimal[]
+  ajudas        AjudaOng[]
+
+  @@index([ongId, status])
+  @@index([publicado, status])
+  @@index([especie, porte])
+  @@index([publicadoEm])
+  @@map("animais_adocao")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  INTERESSE ("Quero conhecer")
+//  Não é adoção: a ONG conduz entrevista/critérios por fora.
+// ─────────────────────────────────────────────────────────────
+model InteresseAdocao {
+  id          String   @id @default(uuid())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  animalId    String
+  animal      AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  ongId       String
+  ong         Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  status      StatusInteresse @default(ENVIADO)
+
+  // { moradia, temCriancas, temOutrosPets, experiencia, mensagem? }
+  respostas   Json
+
+  // Prova do aceite (LGPD): o usuário autorizou compartilhar nome/contato/respostas com a ONG.
+  consentimentoEm DateTime
+
+  // Preenchido quando o tutor adiciona o animal adotado aos "Meus pets".
+  // Referência solta (sem FK) para não acoplar a exclusão de pets.
+  petCadastradoId String?
+
+  canceladoEm DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([animalId, status])
+  @@index([ongId, status])
+  @@map("interesses_adocao")
+}
+
+model FavoritoAnimal {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  animalId  String
+  animal    AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, animalId])
+  @@index([userId])
+  @@map("favoritos_animais")
+}
+
+// "Avise-me quando chegar um assim"
+model AlertaAdocao {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  especie   Especie?
+  porte     Porte?
+  faseVida  FaseVida?
+  sexo      SexoPet?
+  cidade    String?
+  estado    String?
+
+  ultimoAvisoEm DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("alertas_adocao")
+}
+
+model DenunciaAnimal {
+  id        String   @id @default(uuid())
+
+  animalId  String
+  animal    AnimalAdocao @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  motivo    MotivoDenuncia
+  detalhe   String?  @db.Text
+  resolvida Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([animalId, resolvida])
+  @@index([resolvida, createdAt])
+  @@map("denuncias_animais")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  AJUDA À ONG (apadrinhar, doar itens, voluntariado, PIX)
+//  Sem pagamento no app: é a INTENÇÃO registrada; a ONG combina por fora.
+// ─────────────────────────────────────────────────────────────
+model AjudaOng {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ongId     String
+  ong       Ong      @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  tipo      TipoAjuda
+  status    StatusAjuda @default(ENVIADA)
+
+  animalId  String?
+  animal    AnimalAdocao? @relation(fields: [animalId], references: [id], onDelete: SetNull)
+
+  itens          String[]
+  atividades     String[]
+  valorMensal    Float?
+  valorDoado     Float?
+  disponibilidade String?
+  mensagem       String?  @db.Text
+
+  consentimentoEm DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([ongId, status])
+  @@index([animalId, tipo, status])
+  @@map("ajudas_ong")
+}
+
+enum StatusOngUsuario {
+  CONVIDADO   // convite enviado, senha ainda não definida
+  ATIVO
+  BLOQUEADO
+}
+
+model OngUsuario {
+  id        String @id @default(uuid())
+
+  ongId     String
+  ong       Ong    @relation(fields: [ongId], references: [id], onDelete: Cascade)
+
+  nome      String
+  email     String @unique
+  senhaHash String?                       // null até o primeiro acesso
+
+  status    StatusOngUsuario @default(CONVIDADO)
+
+  // O token do convite NUNCA é guardado puro: só o hash (sha256).
+  conviteTokenHash String?   @unique
+  conviteExpiraEm  DateTime?
+  conviteEnviadoEm DateTime?
+
+  ultimoLoginEm DateTime?
+  criadoPor     String?
+
+  refreshTokens OngRefreshToken[]
+  resetTokens   OngResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ongId])
+  @@map("ong_usuarios")
+}
+
+// Refresh token com ROTAÇÃO. Só o hash é guardado. Todos os tokens de uma mesma sessão
+// compartilham `familiaId`: se um token já usado reaparecer (roubo), a família inteira é revogada.
+model OngRefreshToken {
+  id         String @id @default(uuid())
+  usuarioId  String
+  usuario    OngUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  familiaId  String
+  tokenHash  String   @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?   // preenchido quando foi trocado por um novo
+  revogadoEm DateTime?
+
+  createdAt  DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([familiaId])
+  @@index([expiraEm])
+  @@map("ong_refresh_tokens")
+}
+
+// "Esqueci minha senha": link de uso único, vale 1 hora, só o hash é guardado.
+model OngResetToken {
+  id         String @id @default(uuid())
+  usuarioId  String
+  usuario    OngUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tokenHash  String   @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+
+  createdAt  DateTime @default(now())
+
+  @@index([usuarioId])
+  @@map("ong_reset_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  NOVIDADES (News) — cole no final do schema.prisma
+//  Reaproveita o enum Especie que já existe (GATO | CACHORRO).
+// ─────────────────────────────────────────────────────────────
+enum CategoriaNovidade {
+  NOTICIAS
+  SAUDE
+  CURIOSIDADES
+  EVENTOS
+}
+
+enum StatusNovidade {
+  RASCUNHO
+  PUBLICADA
+  ARQUIVADA
+}
+
+model Novidade {
+  id              String            @id @default(uuid())
+
+  // Identificador público usado nas rotas do app (ex: "sinais-de-check-up").
+  // O app já usa esse formato como id. Imutável depois de criado.
+  slug            String            @unique
+
+  titulo          String
+  resumo          String            @db.Text
+  categoria       CategoriaNovidade
+  capaUrl         String?           // Cloudinary. Sem capa, o app desenha o gradiente da categoria.
+  tempoLeituraMin Int
+
+  status          StatusNovidade    @default(RASCUNHO)
+  // PUBLICADA + publicadoEm no futuro = agendada (só aparece no app a partir da data)
+  publicadoEm     DateTime?
+
+  especies        Especie[]         @default([])   // vazio = serve para qualquer espécie
+  destaque        Boolean           @default(false)
+  patrocinado     Boolean           @default(false)
+  parceiroNome    String?
+
+  resumoRapido    String[]          @default([])   // 2 a 4 frases curtas
+  blocos          Json                              // [{ tipo: "paragrafo"|"subtitulo"|"lista"|"aviso", ... }]
+  dica            Json?                             // { titulo, texto, acao }
+  relacionados    String[]          @default([])   // slugs
+
+  // título + resumo sem acento e em minúsculas (busca sem depender da extensão unaccent)
+  buscaTexto      String            @default("") @db.Text
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status, publicadoEm])
+  @@index([categoria, status])
+  @@index([destaque, status])
+  @@map("novidades")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  AVALIAÇÃO DO APP
+//  userId em SetNull: se a conta for excluída, a nota continua nas métricas.
+// ─────────────────────────────────────────────────────────────
+enum StatusAvaliacaoApp {
+  NOVA
+  EM_ANALISE
+  RESOLVIDA
+}
+
+model AvaliacaoApp {
+  id          String   @id @default(uuid())
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  nota        Int                      // 1 a 5
+  comentario  String?  @db.Text
+  gatilho     String                   // VACINA_REGISTRADA, ANALISE_CONCLUIDA...
+  plataforma  String                   // "ios" | "android"
+  versaoApp   String?
+  build       String?
+
+  abriuLoja   Boolean  @default(false)
+  statusAdmin StatusAvaliacaoApp @default(NOVA)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([nota])
+  @@index([versaoApp])
+  @@map("avaliacoes_app")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  VERSÃO DO APP (por plataforma)
+//  versaoMinima: abaixo dela o app mostra a tela de atualização obrigatória.
+//  ultimaVersao: abaixo dela o app mostra o aviso dispensável.
+// ─────────────────────────────────────────────────────────────
+model ConfigVersaoApp {
+  plataforma   String   @id          // "ios" | "android"
+  versaoMinima String   @default("0.0.0")
+  ultimaVersao String   @default("0.0.0")
+  urlLoja      String?
+  mensagem     String?
+  updatedAt    DateTime @updatedAt
+
+  @@map("config_versao_app")
+}
+
+// ============================================================
+//  PORTAL DO PET SHOP: cole no final do schema.prisma
+//  + em `model PetShop`, adicione a linha:   usuarios PetShopUsuario[]
+//  Depois:  npx prisma migrate dev --name petshop_portal
+// ============================================================
+
+enum StatusPetShopUsuario {
+  CONVIDADO   // convite enviado, senha ainda não definida
+  ATIVO
+  BLOQUEADO
+}
+
+model PetShopUsuario {
+  id        String  @id @default(uuid())
+
+  petShopId String
+  petShop   PetShop @relation(fields: [petShopId], references: [id], onDelete: Cascade)
+
+  nome      String
+  email     String  @unique
+  senhaHash String?                       // null até o primeiro acesso
+
+  status    StatusPetShopUsuario @default(CONVIDADO)
+
+  // O token do convite NUNCA é guardado puro: só o hash (sha256).
+  conviteTokenHash String?   @unique
+  conviteExpiraEm  DateTime?
+  conviteEnviadoEm DateTime?
+
+  ultimoLoginEm DateTime?
+  criadoPor     String?
+
+  refreshTokens PetShopRefreshToken[]
+  resetTokens   PetShopResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([petShopId])
+  @@map("petshop_usuarios")
+}
+
+// Refresh token com ROTAÇÃO (mesma família = mesma sessão). Só o hash é guardado.
+model PetShopRefreshToken {
+  id         String         @id @default(uuid())
+  usuarioId  String
+  usuario    PetShopUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  familiaId  String
+  tokenHash  String         @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+  revogadoEm DateTime?
+
+  createdAt  DateTime       @default(now())
+
+  @@index([usuarioId])
+  @@index([familiaId])
+  @@index([expiraEm])
+  @@map("petshop_refresh_tokens")
+}
+
+model PetShopResetToken {
+  id         String         @id @default(uuid())
+  usuarioId  String
+  usuario    PetShopUsuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tokenHash  String         @unique
+  expiraEm   DateTime
+  usadoEm    DateTime?
+
+  createdAt  DateTime       @default(now())
+
+  @@index([usuarioId])
+  @@map("petshop_reset_tokens")
+}
+
+
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: src/services/authService.js
+============================================================
+
+// src/services/authService.js
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const prisma = require('../config/database');
+const userRepository = require('../repositories/userRepository');
+const { generateToken, decodeToken } = require('../utils/jwt');
+const { AppError } = require('../middlewares/errorHandler');
+const emailService = require('./emailService');
+
+const PREFERENCIAS_PUSH_SELECT = {
+  notificacoesAtivas: true,
+  pushPet: true,
+  pushAdocao: true,
+  pushClube: true,
+  pushNovidades: true,
+};
+
+// Sem 0/O/1/I para evitar confusão ao digitar o código.
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function gerarCodigoIndicacao() {
+  let sufixo = '';
+  for (let i = 0; i < 5; i += 1) {
+    sufixo += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
+  }
+  return `BITZY-${sufixo}`;
+}
+
+class AuthService {
+  async register(userData) {
+    const existingUser = await userRepository.findByEmail(userData.email);
+    if (existingUser) throw new AppError('Email já em uso', 400);
+
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+
+    const formattedData = {
+      email: userData.email,
+      nome: userData.name,
+      senha: hashedPassword,
+      sexo: userData.sex,
+      dataNascimento: userData.birthDate ? new Date(userData.birthDate) : null,
+    };
+
+    const user = await userRepository.createUser(formattedData);
+    const token = generateToken({ id: user.id, email: user.email });
+
+    return { user, token };
+  }
+
+  async login(email, password) {
+    if (!email || !password)
+      throw new AppError('Preencha o e-mail e a senha para continuar.', 400);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email))
+      throw new AppError('Informe um endereço de e-mail válido.', 400);
+
+    const user = await userRepository.findByEmail(email);
+    if (!user)
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+
+    const isPasswordValid = await bcrypt.compare(password, user.senha);
+    if (!isPasswordValid)
+      throw new AppError('E-mail ou senha incorretos. Verifique seus dados e tente novamente.', 401);
+
+    const token = generateToken({ id: user.id, email: user.email });
+    const { senha: _, ...userWithoutPassword } = user;
+
+    return { user: userWithoutPassword, token };
+  }
+
+  async getProfile(userId) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    const { senha: _, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  async updateProfile(userId, updateData) {
+    const data = {
+      nome: updateData.name,
+      sexo: updateData.sex ? updateData.sex.toUpperCase() : undefined,
+      dataNascimento: updateData.birthDate ? new Date(updateData.birthDate) : undefined,
+    };
+
+    Object.keys(data).forEach((key) => data[key] === undefined && delete data[key]);
+    return await userRepository.update(userId, data);
+  }
+
+  async updateConsentimentoIA(userId, consentimento) {
+    if (typeof consentimento !== 'boolean') {
+      throw new AppError('O consentimento deve ser verdadeiro ou falso.', 400);
+    }
+
+    const user = await userRepository.findById(userId);
+
+    if (!user) {
+      throw new AppError('Usuário não encontrado', 404);
+    }
+
+    return await userRepository.update(userId, {
+      consentimentoIA: consentimento,
+      consentimentoIAEm: consentimento ? new Date() : null,
+    });
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await userRepository.findById(userId);
+
+    const isMatch = await bcrypt.compare(currentPassword, user.senha);
+    if (!isMatch) throw new AppError('Senha atual incorreta', 401);
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    return await userRepository.update(userId, { senha: hashedNewPassword });
+  }
+
+  async deleteAccount(userId) {
+    const user = await userRepository.findById(userId);
+    if (!user) throw new AppError('Usuário não encontrado', 404);
+    return await userRepository.delete(userId);
+  }
+
+  async refreshToken(oldToken) {
+    const decoded = decodeToken(oldToken);
+    if (!decoded?.id) throw new AppError('Token inválido', 401);
+
+    const user = await userRepository.findById(decoded.id);
+    if (!user) throw new AppError('Usuário não encontrado', 401);
+
+    const newToken = generateToken({ id: user.id, email: user.email });
+    const { senha: _, ...userWithoutPassword } = user;
+
+    return { user: userWithoutPassword, token: newToken };
+  }
+
+  // ─── ESQUECEU A SENHA ────────────────────────────────────────────────────
+
+  async sendPasswordResetCode(email) {
+    const user = await userRepository.findByEmail(email);
+    if (!user) return;
+
+    await prisma.passwordResetCode.updateMany({
+      where: { email, used: false },
+      data: { used: true },
+    });
+
+    const code = crypto.randomInt(100000, 999999).toString();
+    const hashedCode = await bcrypt.hash(code, 10);
+
+    await prisma.passwordResetCode.create({
+      data: {
+        email,
+        code: hashedCode,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    });
+
+    await emailService.sendPasswordResetCode(email, user.nome, code);
+  }
+
+  async verifyPasswordResetCode(email, code) {
+    const record = await prisma.passwordResetCode.findFirst({
+      where: { email, used: false },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) throw new AppError('Código inválido ou expirado.', 400);
+    if (record.expiresAt < new Date()) throw new AppError('Código expirado. Solicite um novo.', 400);
+
+    const isValid = await bcrypt.compare(code, record.code);
+    if (!isValid) throw new AppError('Código incorreto. Verifique e tente novamente.', 400);
+
+    await prisma.passwordResetCode.update({
+      where: { id: record.id },
+      data: { used: true },
+    });
+
+    const resetToken = generateToken(
+      { id: record.id, email, type: 'password_reset' },
+      '10m',
+    );
+
+    return { resetToken };
+  }
+
+  async resetPassword(resetToken, newPassword) {
+    let decoded;
+    try {
+      const { verifyToken } = require('../utils/jwt');
+      decoded = verifyToken(resetToken);
+    } catch {
+      throw new AppError('Token de redefinição inválido ou expirado.', 400);
+    }
+
+    if (decoded.type !== 'password_reset')
+      throw new AppError('Token inválido.', 400);
+
+    const user = await userRepository.findByEmail(decoded.email);
+    if (!user) throw new AppError('Usuário não encontrado.', 404);
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepository.update(user.id, { senha: hashedPassword });
+  }
+
+  // ─── LOCALIZAÇÃO ─────────────────────────────────────────────────────────
+
+  async updateLocation(userId, locationData) {
+    const { latitude, longitude, cidade, estado, pais } = locationData;
+
+    const data = {};
+    if (latitude !== undefined) data.latitude = latitude;
+    if (longitude !== undefined) data.longitude = longitude;
+    if (cidade !== undefined) data.cidade = cidade;
+    if (estado !== undefined) data.estado = estado;
+    if (pais !== undefined) data.pais = pais;
+
+    return await userRepository.update(userId, data);
+  }
+
+  // ─── PUSH TOKEN ───────────────────────────────────────────────────────────
+
+  async updatePushToken(userId, pushToken) {
+    // Um aparelho pertence a uma conta só: quem entrou por último fica com o token.
+    if (pushToken) {
+      await prisma.user.updateMany({
+        where: { pushToken, id: { not: userId } },
+        data: { pushToken: null },
+      });
+    }
+    await userRepository.update(userId, { pushToken });
+}
+
+  async removePushToken(userId, pushToken) {
+    await prisma.user.updateMany({
+      where: { id: userId, ...(pushToken ? { pushToken } : {}) },
+      data: { pushToken: null },
+    });
+  }
+
+  // ─── PREFERÊNCIAS DE PUSH ─────────────────────────────────────────────────
+
+  async getPreferenciasPush(userId) {
+    const preferencias = await prisma.user.findUnique({
+      where: { id: userId },
+      select: PREFERENCIAS_PUSH_SELECT,
+    });
+    if (!preferencias) throw new AppError('Usuário não encontrado', 404);
+    return preferencias;
+  }
+
+  async updatePreferenciasPush(userId, body = {}) {
+    const data = {};
+    for (const campo of Object.keys(PREFERENCIAS_PUSH_SELECT)) {
+      if (typeof body[campo] === 'boolean') data[campo] = body[campo];
+    }
+    if (Object.keys(data).length === 0) {
+      throw new AppError('Nenhuma preferência válida foi enviada.', 400);
+    }
+    return await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: PREFERENCIAS_PUSH_SELECT,
+    });
+  }
+
+  // ─── INDICAÇÃO ────────────────────────────────────────────────────────────
+
+  // Devolve o código do usuário; se ainda não tem, gera um.
+  // O updateMany com "codigoIndicacao: null" evita sobrescrever se duas chamadas chegarem juntas,
+  // e o P2002 (código repetido) apenas sorteia outro.
+  async getCodigoIndicacao(userId) {
+    for (let tentativa = 0; tentativa < 5; tentativa += 1) {
+      const atual = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { codigoIndicacao: true },
+      });
+      if (!atual) throw new AppError('Usuário não encontrado', 404);
+      if (atual.codigoIndicacao) return atual.codigoIndicacao;
+
+      try {
+        await prisma.user.updateMany({
+          where: { id: userId, codigoIndicacao: null },
+          data: { codigoIndicacao: gerarCodigoIndicacao() },
+        });
+      } catch (err) {
+        if (err.code !== 'P2002') throw err;
+      }
+    }
+    throw new AppError('Não foi possível gerar o código de indicação.', 500);
+  }
+}
+
+module.exports = new AuthService();
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: src/controllers/authController.js
+============================================================
+
+// src/controllers/authController.js
+const authService = require('../services/authService');
+const asyncHandler = require('../utils/asyncHandler');
+
+class AuthController {
+  register = asyncHandler(async (req, res) => {
+    const { user, token } = await authService.register(req.body);
+    res.status(201).json({ status: 'success', data: { user, token } });
+  });
+
+  login = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+    const { user, token } = await authService.login(email, password);
+    res.status(200).json({ status: 'success', data: { user, token } });
+  });
+
+  getProfile = asyncHandler(async (req, res) => {
+    const user = await authService.getProfile(req.user.id);
+    res.status(200).json({ status: 'success', data: { user } });
+  });
+
+  updateProfile = asyncHandler(async (req, res) => {
+    const updatedUser = await authService.updateProfile(req.user.id, req.body);
+    res.status(200).json({ status: 'success', data: { user: updatedUser } });
+  });
+
+  updateConsentimentoIA = asyncHandler(async (req, res) => {
+    const { consentimento } = req.body;
+
+    const updatedUser = await authService.updateConsentimentoIA(
+      req.user.id,
+      consentimento,
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { user: updatedUser },
+    });
+  });
+
+  changePassword = asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    await authService.changePassword(req.user.id, currentPassword, newPassword);
+    res.status(200).json({ status: 'success', message: 'Senha alterada com sucesso' });
+  });
+
+  deleteAccount = asyncHandler(async (req, res) => {
+    await authService.deleteAccount(req.user.id);
+    res.status(204).json({ status: 'success', data: null });
+  });
+
+  refreshToken = asyncHandler(async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ status: 'error', message: 'Token não fornecido' });
+    }
+    const oldToken = authHeader.split(' ')[1];
+    const { user, token } = await authService.refreshToken(oldToken);
+    res.status(200).json({ status: 'success', data: { user, token } });
+  });
+
+  // ─── ESQUECEU A SENHA ──────────────────────────────────────────────────
+
+  forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    await authService.sendPasswordResetCode(email.toLowerCase().trim());
+    res.status(200).json({
+      status: 'success',
+      message: 'Se este email estiver cadastrado, você receberá um código em breve.',
+    });
+  });
+
+  verifyResetCode = asyncHandler(async (req, res) => {
+    const { email, code } = req.body;
+    const { resetToken } = await authService.verifyPasswordResetCode(
+      email.toLowerCase().trim(),
+      code.trim(),
+    );
+    res.status(200).json({ status: 'success', data: { resetToken } });
+  });
+
+  resetPassword = asyncHandler(async (req, res) => {
+    const { resetToken, newPassword } = req.body;
+    await authService.resetPassword(resetToken, newPassword);
+    res.status(200).json({ status: 'success', message: 'Senha redefinida com sucesso.' });
+  });
+
+  // ─── LOCALIZAÇÃO ───────────────────────────────────────────────────────
+
+  updateLocation = asyncHandler(async (req, res) => {
+    const { latitude, longitude, cidade, estado, pais } = req.body;
+    const updatedUser = await authService.updateLocation(req.user.id, {
+      latitude,
+      longitude,
+      cidade,
+      estado,
+      pais,
+    });
+    res.status(200).json({ status: 'success', data: { user: updatedUser } });
+  });
+
+  // ─── PUSH TOKEN ────────────────────────────────────────────────────────
+
+  updatePushToken = asyncHandler(async (req, res) => {
+    const { pushToken } = req.body;
+    await authService.updatePushToken(req.user.id, pushToken);
+    res.status(200).json({ status: 'success', message: 'Push token atualizado' });
+  });
+
+  removePushToken = asyncHandler(async (req, res) => {
+    await authService.removePushToken(req.user.id, req.body?.pushToken);
+    res.status(200).json({ status: 'success', message: 'Push token removido' });
+  });
+
+  // ─── PREFERÊNCIAS DE PUSH ──────────────────────────────────────────────
+
+  getPreferenciasPush = asyncHandler(async (req, res) => {
+    const preferencias = await authService.getPreferenciasPush(req.user.id);
+    res.status(200).json({ status: 'success', data: { preferencias } });
+  });
+
+  updatePreferenciasPush = asyncHandler(async (req, res) => {
+    const preferencias = await authService.updatePreferenciasPush(req.user.id, req.body);
+    res.status(200).json({ status: 'success', data: { preferencias } });
+  });
+
+  // ─── INDICAÇÃO ─────────────────────────────────────────────────────────
+
+  getCodigoIndicacao = asyncHandler(async (req, res) => {
+    const codigo = await authService.getCodigoIndicacao(req.user.id);
+    res.status(200).json({ status: 'success', data: { codigo } });
+  });
+}
+
+module.exports = new AuthController();
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: src/routes/authRoutes.js
+============================================================
+
+// src/routes/authRoutes.js
+const express = require('express');
+const authController = require('../controllers/authController');
+const {
+  registerValidator,
+  loginValidator,
+  forgotPasswordValidator,
+  verifyResetCodeValidator,
+  resetPasswordValidator,
+} = require('../validators/authValidator');
+const validate = require('../middlewares/validate');
+const authMiddleware = require('../middlewares/auth');
+const { uploadUserPhoto } = require('../middlewares/upload');
+const uploadController = require('../controllers/uploadController');
+const { authLimiter, registerLimiter } = require('../middlewares/rateLimiter');
+
+const router = express.Router();
+
+// ── Rotas públicas ──────────────────────────────────────────
+router.post('/register', registerLimiter, registerValidator, validate, authController.register);
+router.post('/login',    authLimiter,     loginValidator,    validate, authController.login);
+router.post('/refresh',  authLimiter,     authController.refreshToken);
+
+// Esqueceu a senha — mesmo limiter do login (evita enumeração de e-mails)
+router.post('/forgot-password',   authLimiter, forgotPasswordValidator,   validate, authController.forgotPassword);
+router.post('/verify-reset-code', authLimiter, verifyResetCodeValidator,  validate, authController.verifyResetCode);
+router.post('/reset-password',    authLimiter, resetPasswordValidator,    validate, authController.resetPassword);
+
+// ── Rotas protegidas ────────────────────────────────────────
+router.get('/profile',         authMiddleware, authController.getProfile);
+router.put('/profile',         authMiddleware, authController.updateProfile);
+router.patch(
+  '/consentimento-ia',
+  authMiddleware,
+  authController.updateConsentimentoIA,
+);
+router.patch('/change-password', authMiddleware, authController.changePassword);
+router.patch('/location',      authMiddleware, authController.updateLocation);
+router.patch('/push-token',    authMiddleware, authController.updatePushToken);
+router.delete('/push-token',   authMiddleware, authController.removePushToken);
+router.get('/preferencias-push',   authMiddleware, authController.getPreferenciasPush);
+router.patch('/preferencias-push', authMiddleware, authController.updatePreferenciasPush);
+router.get('/codigo-indicacao',    authMiddleware, authController.getCodigoIndicacao);
+router.delete('/delete-account', authMiddleware, authController.deleteAccount);
+router.post('/perfil/avatar',  authMiddleware, uploadUserPhoto, uploadController.uploadUserPhoto);
+
+module.exports = router;
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: src/validators/authValidator.js
+============================================================
+
+// src/validators/authValidator.js
+const { body } = require('express-validator');
+
+const registerValidator = [
+  body('email')
+    .isEmail().withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('name')
+    .trim().notEmpty().withMessage('Name is required')
+    .isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
+  body('password')
+    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+];
+
+const loginValidator = [
+  body('email')
+    .isEmail().withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('password')
+    .notEmpty().withMessage('Password is required'),
+];
+
+const forgotPasswordValidator = [
+  body('email')
+    .isEmail().withMessage('Informe um e-mail válido.')
+    .normalizeEmail(),
+];
+
+const verifyResetCodeValidator = [
+  body('email')
+    .isEmail().withMessage('E-mail inválido.')
+    .normalizeEmail(),
+  body('code')
+    .trim()
+    .notEmpty().withMessage('Informe o código.')
+    .isLength({ min: 6, max: 6 }).withMessage('O código deve ter 6 dígitos.')
+    .isNumeric().withMessage('O código deve conter apenas números.'),
+];
+
+const resetPasswordValidator = [
+  body('resetToken')
+    .notEmpty().withMessage('Token de redefinição não informado.'),
+  body('newPassword')
+    .isLength({ min: 6 }).withMessage('A nova senha deve ter no mínimo 6 caracteres.'),
+];
+
+module.exports = {
+  registerValidator,
+  loginValidator,
+  forgotPasswordValidator,
+  verifyResetCodeValidator,
+  resetPasswordValidator,
+};
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: src/repositories/userRepository.js
+============================================================
+
+const prisma = require('../config/database');
+const BaseRepository = require('./baseRepository');
+
+class UserRepository extends BaseRepository {
+  constructor() {
+    super('user');
+  }
+
+  async findByEmail(email) {
+    return await prisma.user.findUnique({
+      where: { email },
+    });
+  }
+
+  async findByIdWithPosts(id) {
+    return await prisma.user.findUnique({
+      where: { id },
+      include: {
+        posts: true,
+      },
+    });
+  }
+
+  async createUser(data) {
+    return await prisma.user.create({
+      data: data,
+      select: {
+        id: true,
+        email: true,
+        nome: true,
+        avatar: true,
+        latitude: true,
+        longitude: true,
+        cidade: true,
+        estado: true,
+        pais: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async update(id, data) {
+    return await prisma.user.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        email: true,
+        nome: true,
+        sexo: true,
+        dataNascimento: true,
+        avatar: true,
+        latitude: true,
+        longitude: true,
+        cidade: true,
+        estado: true,
+        pais: true,
+        consentimentoIA: true,
+        consentimentoIAEm: true,
+      },
+    });
+  }
+
+  async delete(id) {
+    return await prisma.user.delete({
+      where: { id },
+    });
+  }
+}
+
+module.exports = new UserRepository();
+------------------------------------------------------------
+
+============================================================
+ARQUIVO: package.json
+============================================================
+
+{
+  "name": "backend-app",
+  "version": "1.0.0",
+  "description": "Backend API for React Native App",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "node prisma/seed.js"
+  },
+  "keywords": [
+    "express",
+    "prisma",
+    "api",
+    "react-native"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.7.0",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^1.41.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
+    "express-validator": "^7.0.1",
+    "helmet": "^8.2.0",
+    "ioredis": "^5.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.1.1",
+    "multer-storage-cloudinary": "^4.0.0",
+    "node-cron": "^4.2.1",
+    "openai": "^6.21.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "resend": "^6.12.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "pino-pretty": "^13.1.3",
+    "prisma": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
+------------------------------------------------------------
+

@@ -18,6 +18,8 @@ const PREFERENCIAS_PUSH_SELECT = {
 // Sem 0/O/1/I para evitar confusão ao digitar o código.
 const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+const OBJETIVOS_VALIDOS = ['TENHO_PET', 'QUERO_ADOTAR', 'EXPLORAR'];
+
 function gerarCodigoIndicacao() {
   let sufixo = '';
   for (let i = 0; i < 5; i += 1) {
@@ -102,6 +104,18 @@ class AuthService {
     return await userRepository.update(userId, {
       consentimentoIA: consentimento,
       consentimentoIAEm: consentimento ? new Date() : null,
+    });
+  }
+
+  // Guarda o que a pessoa escolheu ao começar e marca o onboarding como feito.
+  // Também serve para ela mudar a escolha depois.
+  async updateOnboarding(userId, objetivo) {
+    if (!OBJETIVOS_VALIDOS.includes(objetivo)) {
+      throw new AppError('Objetivo inválido.', 400);
+    }
+    return await userRepository.update(userId, {
+      objetivo,
+      onboardingConcluido: true,
     });
   }
 

@@ -29,6 +29,8 @@ router.post('/animais/:id/denuncias', denunciaValidator, validate, adocaoControl
 router.get('/ongs', listarOngsValidator, validate, adocaoController.listarOngs);
 router.get('/ongs/:id', idValidator, validate, adocaoController.detalhesOng);
 router.get('/ongs/:id/ajuda', idValidator, validate, adocaoController.ajudaOng);
+router.post('/ongs/:id/favorito', idValidator, validate, adocaoController.favoritarOng);
+router.delete('/ongs/:id/favorito', idValidator, validate, adocaoController.desfavoritarOng);
 
 // ── INTERESSES ─────────────────────────────────────────────────────────────
 router.post('/interesses', criarInteresseValidator, validate, adocaoController.demonstrarInteresse);
@@ -39,6 +41,7 @@ router.patch('/interesses/:id/pet', vincularPetValidator, validate, adocaoContro
 
 // ── FAVORITOS ──────────────────────────────────────────────────────────────
 router.get('/favoritos', adocaoController.listarFavoritos);
+router.get('/favoritos/ongs', adocaoController.listarOngsFavoritas);
 router.post('/favoritos/:animalId', animalIdValidator, validate, adocaoController.favoritar);
 router.delete('/favoritos/:animalId', animalIdValidator, validate, adocaoController.desfavoritar);
 

@@ -886,4 +886,6 @@ class ClubService {
 }
 }
 
+module.exports.calcularDataFim = calcularDataFim;
+
 module.exports = new ClubService();

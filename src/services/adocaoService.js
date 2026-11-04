@@ -37,7 +37,7 @@ function serializarOngResumo(ong, distanciaKm = null) {
 }
 
 // Nunca devolve latitude/longitude nem endereço: a distância é calculada aqui.
-function serializarOng(ong, { distanciaKm = null, totalAnimaisDisponiveis = 0 } = {}) {
+function serializarOng(ong, { distanciaKm = null, totalAnimaisDisponiveis = 0, favorita = false } = {}) {
   return {
     ...serializarOngResumo(ong, distanciaKm),
     tipo: ong.tipo,
@@ -51,6 +51,7 @@ function serializarOng(ong, { distanciaKm = null, totalAnimaisDisponiveis = 0 } 
     processoAdocao: ong.processoAdocao,
     taxaAdocao: ong.taxaAdocao,
     totalAnimaisDisponiveis,
+    favorita,
   };
 }
 
@@ -241,17 +242,25 @@ class AdocaoService {
 
   // ── ONGs ───────────────────────────────────────────────────────────────────
 
-  async listarOngs({ latitude, longitude, cidade, estado, raioKm }) {
+  async listarOngs({ latitude, longitude, cidade, estado, raioKm }, userId = null) {
     const temGps = latitude != null && longitude != null;
     const caixa = temGps && raioKm ? caixaGeografica(latitude, longitude, raioKm) : null;
 
     const ongs = await ongRepository.listarAtivas({ caixa });
-    const totais = await ongRepository.contarDisponiveis(ongs.map((o) => o.id));
+    const ids = ongs.map((o) => o.id);
+    const [totais, favoritas] = await Promise.all([
+      ongRepository.contarDisponiveis(ids),
+      userId
+        ? prisma.favoritoOng.findMany({ where: { userId, ongId: { in: ids } }, select: { ongId: true } })
+        : [],
+    ]);
+    const favSet = new Set(favoritas.map((f) => f.ongId));
 
     const resultado = ongs.map((o) =>
       serializarOng(o, {
         distanciaKm: distanciaAteOng(o, { latitude, longitude }),
         totalAnimaisDisponiveis: totais[o.id] ?? 0,
+        favorita: favSet.has(o.id),
       }),
     );
 
@@ -269,11 +278,19 @@ class AdocaoService {
     );
   }
 
-  async detalhesOng(ongId) {
+  async detalhesOng(ongId, userId = null) {
     const ong = await ongRepository.findAtivaPublica(ongId);
     if (!ong) throw new AppError('ONG não encontrada.', 404);
-    const totais = await ongRepository.contarDisponiveis([ongId]);
-    return serializarOng(ong, { totalAnimaisDisponiveis: totais[ongId] ?? 0 });
+    const [totais, favorito] = await Promise.all([
+      ongRepository.contarDisponiveis([ongId]),
+      userId
+        ? prisma.favoritoOng.findUnique({ where: { userId_ongId: { userId, ongId } } })
+        : null,
+    ]);
+    return serializarOng(ong, {
+      totalAnimaisDisponiveis: totais[ongId] ?? 0,
+      favorita: !!favorito,
+    });
   }
 
   // "Como ajudar": PIX só aparece para ONG verificada.
@@ -445,6 +462,39 @@ class AdocaoService {
 
     return favoritos.map((f) =>
       serializarAnimal(f.animal, { favorito: true, padrinhos: padrinhos[f.animalId] ?? 0 }),
+    );
+  }
+
+  // ── FAVORITOS DE ONG ───────────────────────────────────────────────────────
+
+  async favoritarOng(userId, ongId) {
+    const ong = await ongRepository.findAtivaPublica(ongId);
+    if (!ong) throw new AppError('ONG não encontrada.', 404);
+
+    await prisma.favoritoOng.upsert({
+      where: { userId_ongId: { userId, ongId } },
+      create: { userId, ongId },
+      update: {},
+    });
+    return { favorita: true };
+  }
+
+  async desfavoritarOng(userId, ongId) {
+    await prisma.favoritoOng.deleteMany({ where: { userId, ongId } });
+    return { favorita: false };
+  }
+
+  async listarOngsFavoritas(userId) {
+    const favoritos = await prisma.favoritoOng.findMany({
+      where: { userId, ong: { ativa: true } },
+      include: { ong: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (favoritos.length === 0) return [];
+
+    const totais = await ongRepository.contarDisponiveis(favoritos.map((f) => f.ongId));
+    return favoritos.map((f) =>
+      serializarOng(f.ong, { totalAnimaisDisponiveis: totais[f.ongId] ?? 0, favorita: true }),
     );
   }
 

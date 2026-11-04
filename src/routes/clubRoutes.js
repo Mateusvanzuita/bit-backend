@@ -1,4 +1,8 @@
-// src/routes/clubRoutes.js
+// src/routes/clubRoutes.js  (SUBSTITUI o arquivo atual)
+// SEGURANÇA: no arquivo original as rotas de "gestão" (criar pet shop, criar/editar/desativar cupom de QUALQUER
+// pet shop e ver métricas de qualquer loja) exigiam só login de TUTOR (comentário no código: "sem middleware de role").
+// Qualquer usuário do app podia chamá-las. Agora a gestão é do portal do pet shop (/petshop-portal) e do admin (/internal).
+// O app não usa estas rotas (confirmado em src/service/clubService.ts do bitzy-frontend).
 const express = require('express');
 const clubController = require('../controllers/clubController');
 const ofertaController = require('../controllers/ofertaController');
@@ -10,155 +14,33 @@ const {
   listarCuponsValidator,
   resgatarCupomValidator,
   utilizarCupomValidator,
-  criarCupomValidator,
-  atualizarCupomValidator,
-  criarPetShopValidator
 } = require('../validators/clubValidator');
 
 const router = express.Router();
 
-// Todas as rotas do club exigem autenticação
+// Todas as rotas do club exigem autenticação (tutor)
 router.use(authMiddleware);
 
 // ── PET SHOPS ──────────────────────────────────────────────────────────────
-
-// Lista pet shops próximos ao usuário (GPS ou cidade)
-router.get(
-  '/petshops',
-  listarPetShopsValidator,
-  validate,
-  clubController.listarPetShops,
-);
-
-router.post(
-  '/petshops',
-  criarPetShopValidator,
-  validate,
-  clubController.criarPetShop,
-);
-
-// Detalhes de um pet shop + seus cupons ativos
-router.get(
-  '/petshops/:petShopId',
-  petShopIdValidator,
-  validate,
-  clubController.detalhesPetShop,
-);
+router.get('/petshops', listarPetShopsValidator, validate, clubController.listarPetShops);
+router.get('/petshops/:petShopId', petShopIdValidator, validate, clubController.detalhesPetShop);
 
 // ── SEGUIR ─────────────────────────────────────────────────────────────────
-
-router.post(
-  '/petshops/:petShopId/seguir',
-  petShopIdValidator,
-  validate,
-  clubController.seguir,
-);
-
-router.delete(
-  '/petshops/:petShopId/seguir',
-  petShopIdValidator,
-  validate,
-  clubController.deixarDeSeguir,
-);
+router.post('/petshops/:petShopId/seguir', petShopIdValidator, validate, clubController.seguir);
+router.delete('/petshops/:petShopId/seguir', petShopIdValidator, validate, clubController.deixarDeSeguir);
 
 // ── FAVORITAR (limite: 1 por usuário) ─────────────────────────────────────
-
-router.post(
-  '/petshops/:petShopId/favoritar',
-  petShopIdValidator,
-  validate,
-  clubController.favoritar,
-);
-
-// Remove favorito do usuário (sem precisar informar o pet shop)
-router.delete(
-  '/favorito',
-  clubController.desfavoritar,
-);
+router.post('/petshops/:petShopId/favoritar', petShopIdValidator, validate, clubController.favoritar);
+router.delete('/favorito', clubController.desfavoritar);
 
 // ── CUPONS — USUÁRIO ──────────────────────────────────────────────────────
-
-// Feed de cupons disponíveis na cidade/GPS do usuário
-router.get(
-  '/cupons',
-  listarCuponsValidator,
-  validate,
-  clubController.listarCupons,
-);
-
-// Resgata um cupom (adiciona à carteira)
-router.post(
-  '/cupons/:cupomId/resgatar',
-  resgatarCupomValidator,
-  validate,
-  clubController.resgatar,
-);
-
-// Marca um resgate como utilizado (apresentado ao atendente)
-router.patch(
-  '/resgates/:resgateId/utilizar',
-  utilizarCupomValidator,
-  validate,
-  clubController.utilizar,
-);
-
-// Carteira de cupons do usuário (ativos + histórico)
-router.get(
-  '/carteira',
-  clubController.carteira,
-);
-
-// ── GESTÃO DE CUPONS (pet shop / admin) ───────────────────────────────────
-// Por ora sem middleware de role — adicione authPetShop ou authAdmin quando
-// implementar o painel do estabelecimento
-
-router.get(
-  '/petshops/:petShopId/cupons',
-  petShopIdValidator,
-  validate,
-  clubController.listarCuponsPetShop,
-);
-
-router.post(
-  '/petshops/:petShopId/cupons',
-  criarCupomValidator,
-  validate,
-  clubController.criarCupom,
-);
-
-router.patch(
-  '/petshops/:petShopId/cupons/:cupomId',
-  atualizarCupomValidator,
-  validate,
-  clubController.atualizarCupom,
-);
-
-router.delete(
-  '/petshops/:petShopId/cupons/:cupomId',
-  clubController.desativarCupom,
-);
+router.get('/cupons', listarCuponsValidator, validate, clubController.listarCupons);
+router.post('/cupons/:cupomId/resgatar', resgatarCupomValidator, validate, clubController.resgatar);
+router.patch('/resgates/:resgateId/utilizar', utilizarCupomValidator, validate, clubController.utilizar);
+router.get('/carteira', clubController.carteira);
 
 // ── OFERTAS DE PRODUTOS ────────────────────────────────────────────────────
-
-// Feed de ofertas disponíveis para a home do app (cidade/estado do usuário)
-router.get(
-  '/ofertas',
-  ofertaController.listar,
-);
-
-// Registra o clique/interação e retorna o WhatsApp do petshop para o app abrir
-router.post(
-  '/ofertas/:id/clique',
-  ofertaController.registrarClique,
-);
-
-// ── MÉTRICAS DO PET SHOP ──────────────────────────────────────────────────
-
-router.get(
-  '/petshops/:petShopId/metricas',
-  petShopIdValidator,
-  validate,
-  clubController.metricas,
-);
+router.get('/ofertas', ofertaController.listar);
+router.post('/ofertas/:id/clique', ofertaController.registrarClique);
 
 module.exports = router;

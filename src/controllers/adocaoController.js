@@ -54,13 +54,13 @@ class AdocaoController {
 
   // GET /adocao/ongs
   listarOngs = asyncHandler(async (req, res) => {
-    const ongs = await adocaoService.listarOngs(lerLocalizacao(req.query));
+    const ongs = await adocaoService.listarOngs(lerLocalizacao(req.query), req.user.id);
     res.status(200).json({ status: 'success', data: { ongs } });
   });
 
   // GET /adocao/ongs/:id
   detalhesOng = asyncHandler(async (req, res) => {
-    const ong = await adocaoService.detalhesOng(req.params.id);
+    const ong = await adocaoService.detalhesOng(req.params.id, req.user.id);
     res.status(200).json({ status: 'success', data: { ong } });
   });
 
@@ -119,6 +119,24 @@ class AdocaoController {
   listarFavoritos = asyncHandler(async (req, res) => {
     const animais = await adocaoService.listarFavoritos(req.user.id);
     res.status(200).json({ status: 'success', data: { animais } });
+  });
+
+  // POST /adocao/ongs/:id/favorito
+  favoritarOng = asyncHandler(async (req, res) => {
+    const data = await adocaoService.favoritarOng(req.user.id, req.params.id);
+    res.status(200).json({ status: 'success', data });
+  });
+
+  // DELETE /adocao/ongs/:id/favorito
+  desfavoritarOng = asyncHandler(async (req, res) => {
+    const data = await adocaoService.desfavoritarOng(req.user.id, req.params.id);
+    res.status(200).json({ status: 'success', data });
+  });
+
+  // GET /adocao/favoritos/ongs
+  listarOngsFavoritas = asyncHandler(async (req, res) => {
+    const ongs = await adocaoService.listarOngsFavoritas(req.user.id);
+    res.status(200).json({ status: 'success', data: { ongs } });
   });
 
   // ── ALERTAS ────────────────────────────────────────────────────────────────
