@@ -886,6 +886,8 @@ class ClubService {
 }
 }
 
-module.exports.calcularDataFim = calcularDataFim;
+const clubService = new ClubService();
 
-module.exports = new ClubService();
+clubService.calcularDataFim = calcularDataFim;
+
+module.exports = clubService;
